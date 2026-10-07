@@ -34,6 +34,7 @@ const state = {
   editingLinkId: null,
   editingCategoryId: null,
   editingCategoryParentId: null,
+  pendingParentFolderId: null,
   selectedColor: "default",
   selectedCatColor: CAT_COLORS[0],
   pendingConfirm: null,
@@ -414,22 +415,24 @@ function renderCategories() {
         const count = countLinksInCategory(cat.id);
         const active = state.filter === `category:${cat.id}`;
         return `
-        <button class="cat-item ${active ? "active" : ""}" data-category-id="${cat.id}" type="button">
-          <span class="cat-dot" style="background:${cat.color}"></span>
-          <span>${escapeHtml(cat.name)}</span>
-          <span class="nav-count">${count}</span>
-          <span class="cat-actions">
-            <span class="mini-btn" data-add-sub="${cat.id}" title="Новая подпапка" role="button" tabindex="0">
+        <div class="cat-row-main">
+          <button class="cat-item ${active ? "active" : ""}" data-category-id="${cat.id}" type="button">
+            <span class="cat-dot" style="background:${cat.color}"></span>
+            <span>${escapeHtml(cat.name)}</span>
+            <span class="nav-count">${count}</span>
+          </button>
+          <div class="cat-actions always">
+            <button type="button" class="mini-btn" data-add-sub="${cat.id}" title="Создать подпапку" aria-label="Создать подпапку">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-            </span>
-            <span class="mini-btn" data-edit-cat="${cat.id}" title="Переименовать" role="button" tabindex="0">
+            </button>
+            <button type="button" class="mini-btn" data-edit-cat="${cat.id}" title="Переименовать" aria-label="Переименовать">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-            </span>
-            <span class="mini-btn" data-del-cat="${cat.id}" title="Удалить" role="button" tabindex="0">
+            </button>
+            <button type="button" class="mini-btn" data-del-cat="${cat.id}" title="Удалить" aria-label="Удалить">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
-            </span>
-          </span>
-        </button>
+            </button>
+          </div>
+        </div>
       `;
       })
       .join("");
@@ -481,19 +484,21 @@ function folderTilesHtml(folderId) {
       ${kids
         .map(
           (cat) => `
-        <button type="button" class="folder-tile" data-open-folder="${cat.id}" style="--folder-color:${cat.color}">
-          <span class="folder-icon" aria-hidden="true">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M3 7.5A2.5 2.5 0 015.5 5H9l2 2.5h7.5A2.5 2.5 0 0121 10v7.5a2.5 2.5 0 01-2.5 2.5h-13A2.5 2.5 0 013 17.5v-10z"/>
-            </svg>
-          </span>
-          <span class="folder-name">${escapeHtml(cat.name)}</span>
-          <span class="folder-count">${countLinksInCategory(cat.id)}</span>
-          <span class="folder-actions">
-            <span class="mini-btn" data-add-sub="${cat.id}" title="Новая подпапка" role="button" tabindex="0">+</span>
-            <span class="mini-btn" data-edit-cat="${cat.id}" title="Переименовать" role="button" tabindex="0">✎</span>
-          </span>
-        </button>`
+        <div class="folder-tile-wrap" style="--folder-color:${cat.color}">
+          <button type="button" class="folder-tile" data-open-folder="${cat.id}">
+            <span class="folder-icon" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M3 7.5A2.5 2.5 0 015.5 5H9l2 2.5h7.5A2.5 2.5 0 0121 10v7.5a2.5 2.5 0 01-2.5 2.5h-13A2.5 2.5 0 013 17.5v-10z"/>
+              </svg>
+            </span>
+            <span class="folder-name">${escapeHtml(cat.name)}</span>
+            <span class="folder-count">${countLinksInCategory(cat.id)}</span>
+          </button>
+          <div class="folder-actions always">
+            <button type="button" class="mini-btn" data-add-sub="${cat.id}" title="Создать подпапку" aria-label="Создать подпапку">+</button>
+            <button type="button" class="mini-btn" data-edit-cat="${cat.id}" title="Переименовать" aria-label="Переименовать">✎</button>
+          </div>
+        </div>`
         )
         .join("")}
     </div>
@@ -560,7 +565,12 @@ function renderGrid() {
     titleEl.textContent = cat?.name || "Папка";
     subEl.textContent = "Нажмите подпапку, чтобы зайти внутрь";
     if (crumbEl) crumbEl.innerHTML = breadcrumbHtml(folderId);
-    if (folderStrip) folderStrip.innerHTML = folderTilesHtml(folderId);
+    if (folderStrip) {
+      folderStrip.innerHTML =
+        `<div class="folder-strip-head">
+          <button type="button" class="primary-btn" id="btn-new-subfolder" data-add-sub="${folderId}">+ Подпапка</button>
+        </div>` + folderTilesHtml(folderId);
+    }
   } else {
     titleEl.textContent = "Все ссылки";
     subEl.textContent = "Выберите направление слева или папку ниже";
@@ -800,6 +810,7 @@ function openCategoryModal(category = null, parentCatId = null) {
   state.selectedCatColor = category?.color || CAT_COLORS[0];
   state.editingCategoryId = category?.id || null;
   state.editingCategoryParentId = parentId;
+  state.pendingParentFolderId = parentId;
 
   const parentLabel = document.getElementById("cat-parent-label");
   if (parentLabel) {
@@ -938,7 +949,7 @@ function handleSaveCategory(e) {
       id: uid(),
       name,
       color: state.selectedCatColor,
-      parentId: state.editingCategoryParentId || null,
+      parentId: state.editingCategoryParentId || state.pendingParentFolderId || null,
     });
     toast("Папка создана");
   }
@@ -1685,8 +1696,9 @@ function bindEvents() {
     const edit = e.target.closest("[data-edit-cat]");
     const del = e.target.closest("[data-del-cat]");
     if (addSub) {
+      e.preventDefault();
       e.stopPropagation();
-      openCategoryModal(null, addSub.dataset.addSub);
+      openCategoryModal(null, addSub.getAttribute("data-add-sub"));
       return;
     }
     if (edit) {

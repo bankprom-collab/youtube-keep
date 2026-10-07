@@ -1451,3 +1451,79 @@ img {
     padding-right: var(--space-4);
   }
 }
+
+
+/* Always-visible folder actions (not nested in buttons) */
+.cat-row-main {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cat-row-main .cat-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.cat-actions.always,
+.folder-actions.always {
+  display: flex;
+  gap: 2px;
+  opacity: 1;
+  flex-shrink: 0;
+}
+
+.cat-actions.always .mini-btn,
+.folder-actions.always .mini-btn {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.cat-actions.always .mini-btn:hover,
+.folder-actions.always .mini-btn:hover {
+  background: rgba(28, 25, 23, 0.08);
+  color: var(--ink);
+}
+
+.folder-tile-wrap {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  transition: border-color 160ms var(--ease);
+}
+
+.folder-tile-wrap:hover {
+  border-color: var(--folder-color, var(--line-strong));
+}
+
+.folder-tile {
+  flex: 1;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 12px;
+  text-align: left;
+}
+
+.folder-strip-head {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}

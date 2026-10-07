@@ -1,5 +1,5 @@
 /* YouTube Keep service worker */
-const CACHE = "youtube-keep-v4";
+const CACHE = "youtube-keep-v5";
 const ASSETS = [
   "./",
   "./index.html",
@@ -29,7 +29,6 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
-  // Network-first for YouTube metadata / thumbnails; cache-first for app shell
   if (url.origin !== self.location.origin) {
     event.respondWith(
       fetch(request)
@@ -43,14 +42,14 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Network-first for app shell so updates reach users immediately
   event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) return cached;
-      return fetch(request).then((res) => {
+    fetch(request)
+      .then((res) => {
         const copy = res.clone();
         caches.open(CACHE).then((cache) => cache.put(request, copy)).catch(() => {});
         return res;
-      });
-    })
+      })
+      .catch(() => caches.match(request).then((cached) => cached || caches.match("./index.html")))
   );
 });

@@ -1017,7 +1017,24 @@ function setSyncMessage(text, isError = false) {
   const el = document.getElementById("sync-message");
   if (!el) return;
   el.textContent = text;
-  el.className = isError ? "hint is-err" : text.includes("успешно") || text.includes("Готово") ? "hint is-ok" : "hint";
+  el.className = isError ? "hint is-err" : text.includes("успешно") || text.includes("Готово") || text.includes("подключено") ? "hint is-ok" : "hint";
+}
+
+function explainGitHubError(err, status) {
+  const msg = String(err?.message || err || "");
+  if (status === 401 || /bad credentials|unauthorized/i.test(msg)) {
+    return "Код доступа не принят. Получите новый код и вставьте без пробелов.";
+  }
+  if (status === 404) {
+    return "Облако не найдено. Нажмите «Подключить» ещё раз — я создам его заново.";
+  }
+  if (status === 403 || /rate limit/i.test(msg)) {
+    return "GitHub временно ограничил запросы. Подождите минуту и повторите.";
+  }
+  if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+    return "Нет связи с GitHub. Проверьте интернет на Mac и повторите.";
+  }
+  return `Ошибка: ${msg || status || "неизвестно"}`;
 }
 
 function syncPayload() {
@@ -1087,7 +1104,9 @@ async function syncPush() {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.message || `HTTP ${res.status}`);
+      const e = new Error(err.message || `HTTP ${res.status}`);
+      e.status = res.status;
+      throw e;
     }
 
     const data = await res.json();
@@ -1096,12 +1115,13 @@ async function syncPush() {
     state.sync.status = "ok";
     state.sync.message = "Успешно отправлено в облако";
     saveSyncSettings();
-    setSyncMessage(`Готово. Gist ID: ${data.id}`);
-    toast("Синхронизация: данные отправлены");
+    setSyncMessage(`Готово. Облако подключено (Gist ID: ${data.id}). Теперь откройте телефон.`);
+    toast("Облако подключено");
+    render();
   } catch (err) {
     state.sync.status = "err";
-    setSyncMessage(`Ошибка: ${err.message}`, true);
-    toast("Ошибка синхронизации");
+    setSyncMessage(explainGitHubError(err, err.status), true);
+    toast("Не получилось подключиться");
   } finally {
     renderSyncStatus();
   }
@@ -1127,11 +1147,13 @@ async function syncPull() {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.message || `HTTP ${res.status}`);
+      const e = new Error(err.message || `HTTP ${res.status}`);
+      e.status = res.status;
+      throw e;
     }
     const gist = await res.json();
     const file = gist.files?.["youtube-keep.json"] || Object.values(gist.files || {})[0];
-    if (!file?.content) throw new Error("В gist нет файла youtube-keep.json");
+    if (!file?.content) throw new Error("В облаке пока нет данных — сначала нажмите «Отправить» на главном устройстве.");
 
     const data = JSON.parse(file.content);
     if (!Array.isArray(data.links)) throw new Error("Некорректный формат данных");
@@ -1162,7 +1184,7 @@ async function syncPull() {
     toast("Данные загружены из облака");
   } catch (err) {
     state.sync.status = "err";
-    setSyncMessage(`Ошибка: ${err.message}`, true);
+    setSyncMessage(explainGitHubError(err, err.status), true);
     toast("Не удалось загрузить из облака");
   } finally {
     renderSyncStatus();
@@ -1198,9 +1220,14 @@ function openSyncModal() {
 }
 
 async function connectCloud() {
-  const token = document.getElementById("sync-token").value.trim();
+  const raw = document.getElementById("sync-token").value.trim();
+  const token = raw.replace(/^["'\s]+|["'\s]+$/g, "").replace(/\s+/g, "");
   if (!token) {
     setSyncMessage("Сначала получите код (кнопка выше) и вставьте его в поле.", true);
+    return;
+  }
+  if (!/^gh[pousr]_|^github_pat_/.test(token)) {
+    setSyncMessage("Похоже, это не код доступа GitHub. Он начинается на ghp_ или github_pat_.", true);
     return;
   }
   state.sync.token = token;

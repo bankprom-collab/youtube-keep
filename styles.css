@@ -866,6 +866,11 @@ img {
   margin-bottom: 2px;
 }
 
+.setup-banner.is-sync {
+  border-color: #b7d7c2;
+  background: #f0faf3;
+}
+
 @media (max-width: 960px) {
   .setup-banner {
     margin-left: var(--space-4);

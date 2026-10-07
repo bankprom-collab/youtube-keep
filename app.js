@@ -161,6 +161,10 @@ async function loadAppConfig() {
     const getCode = document.getElementById("btn-get-code");
     if (getCode && appConfig.tokenUrl) getCode.href = appConfig.tokenUrl;
     renderSyncStatus();
+    if (isCloudReady()) {
+      startCloudWatch();
+      syncAll().catch(() => {});
+    }
   } catch {
     /* offline / no config */
   }
@@ -481,8 +485,11 @@ function render() {
   renderGrid();
   fillCategorySelect();
   renderSyncStatus();
-  const banner = document.getElementById("setup-banner");
-  if (banner) banner.hidden = !!(state.sync.token && state.sync.gistId);
+  const setup = document.getElementById("setup-banner");
+  const sync = document.getElementById("sync-banner");
+  const ready = !!(state.sync.token && state.sync.gistId);
+  if (setup) setup.hidden = ready;
+  if (sync) sync.hidden = !ready;
 }
 
 function fillCategorySelect() {
@@ -1050,15 +1057,17 @@ function syncPayload() {
   );
 }
 
-async function syncPush() {
+async function syncPush(opts = {}) {
   if (!state.sync.token) {
     setSyncMessage("Укажите GitHub token", true);
     openModal("modal-sync");
     return;
   }
-  state.sync.status = "busy";
-  renderSyncStatus();
-  setSyncMessage("Отправляю данные…");
+  if (!opts.skipStatus) {
+    state.sync.status = "busy";
+    renderSyncStatus();
+    setSyncMessage("Отправляю данные…");
+  }
 
   try {
     const headers = {
@@ -1118,24 +1127,34 @@ async function syncPush() {
     setSyncMessage(`Готово. Облако подключено (Gist ID: ${data.id}). Теперь откройте телефон.`);
     toast("Облако подключено");
     render();
+    startCloudWatch();
+    syncAll().catch(() => {});
   } catch (err) {
     state.sync.status = "err";
-    setSyncMessage(explainGitHubError(err, err.status), true);
-    toast("Не получилось подключиться");
+    if (!opts.silent) {
+      setSyncMessage(explainGitHubError(err, err.status), true);
+      toast("Не получилось подключиться");
+    }
+    throw err;
   } finally {
-    renderSyncStatus();
+    if (!opts.skipStatus) renderSyncStatus();
   }
 }
 
-async function syncPull() {
-  if (!state.sync.token || !state.sync.gistId) {
-    setSyncMessage("Нужны token и Gist ID", true);
-    openModal("modal-sync");
+async function syncPull(opts = {}) {
+  if (!state.sync.token || !(state.sync.gistId || appConfig.gistId)) {
+    if (!opts.silent) {
+      setSyncMessage("Нужны token и Gist ID", true);
+      openModal("modal-sync");
+    }
     return;
   }
-  state.sync.status = "busy";
-  renderSyncStatus();
-  setSyncMessage("Загружаю данные…");
+  if (!state.sync.gistId) state.sync.gistId = appConfig.gistId;
+  if (!opts.skipStatus) {
+    state.sync.status = "busy";
+    renderSyncStatus();
+    setSyncMessage("Загружаю данные…");
+  }
 
   try {
     const res = await fetch(`https://api.github.com/gists/${state.sync.gistId}`, {
@@ -1181,23 +1200,73 @@ async function syncPull() {
     saveSyncSettings();
     render();
     setSyncMessage(`Готово. Ссылок: ${state.links.length}`);
-    toast("Данные загружены из облака");
+    if (!opts.silent) toast("Данные загружены из облака");
   } catch (err) {
     state.sync.status = "err";
-    setSyncMessage(explainGitHubError(err, err.status), true);
-    toast("Не удалось загрузить из облака");
+    if (!opts.silent) {
+      setSyncMessage(explainGitHubError(err, err.status), true);
+      toast("Не удалось загрузить из облака");
+    }
+    throw err;
   } finally {
-    renderSyncStatus();
+    if (!opts.skipStatus) renderSyncStatus();
   }
 }
 
 let autoSyncTimer = null;
+let pullTimer = null;
+let syncingNow = false;
+
+function isCloudReady() {
+  return !!(state.sync.token && (state.sync.gistId || appConfig.gistId));
+}
+
 function scheduleAutoSync() {
-  if (!state.sync.auto || !state.sync.token || !state.sync.gistId) return;
+  if (!isCloudReady() || !state.sync.auto) return;
   clearTimeout(autoSyncTimer);
   autoSyncTimer = setTimeout(() => {
-    syncPush().catch(() => {});
-  }, 1500);
+    syncAll().catch(() => {});
+  }, 800);
+}
+
+/** Two-way: download remote, merge, then upload. */
+async function syncAll() {
+  if (!isCloudReady()) return;
+  if (syncingNow) return;
+  syncingNow = true;
+  state.sync.status = "busy";
+  renderSyncStatus();
+  try {
+    await syncPull({ silent: true, skipStatus: true });
+    await syncPush({ silent: true, skipStatus: true });
+    state.sync.status = "ok";
+    setSyncMessage("Синхронизировано. Данные одинаковы на всех устройствах.");
+  } catch (err) {
+    state.sync.status = "err";
+    setSyncMessage(explainGitHubError(err, err.status), true);
+  } finally {
+    syncingNow = false;
+    renderSyncStatus();
+    render();
+  }
+}
+
+function startCloudWatch() {
+  clearInterval(pullTimer);
+  if (!isCloudReady()) return;
+  pullTimer = setInterval(() => {
+    if (document.visibilityState === "visible") {
+      syncAll().catch(() => {});
+    }
+  }, 45000);
+  if (!startCloudWatch._bound) {
+    startCloudWatch._bound = true;
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && isCloudReady()) {
+        syncAll().catch(() => {});
+      }
+    });
+  }
 }
 
 function openSyncModal() {
@@ -1432,6 +1501,7 @@ function bindEvents() {
   document.getElementById("btn-sync-pull").addEventListener("click", () => syncPull());
   document.getElementById("btn-connect-cloud").addEventListener("click", () => connectCloud());
   document.getElementById("btn-open-setup").addEventListener("click", openSyncModal);
+  document.getElementById("btn-sync-now").addEventListener("click", () => syncAll());
 
   // mobile sidebar
   document.getElementById("btn-menu").addEventListener("click", openSidebar);

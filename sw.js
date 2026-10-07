@@ -1,11 +1,12 @@
 /* YouTube Keep service worker */
-const CACHE = "youtube-keep-v2";
+const CACHE = "youtube-keep-v3";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
   "./manifest.json",
+  "./config.json",
   "./icons/icon.svg",
 ];
 

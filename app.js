@@ -142,13 +142,40 @@ function saveState(options = {}) {
   if (options.sync !== false) scheduleAutoSync();
 }
 
+const appConfig = {
+  gistId: "",
+  tokenUrl: "https://github.com/settings/tokens/new?scopes=gist&description=YouTube%20Keep",
+};
+
+async function loadAppConfig() {
+  try {
+    const res = await fetch("config.json", { cache: "no-cache" });
+    if (!res.ok) return;
+    const cfg = await res.json();
+    if (cfg.gistId) appConfig.gistId = cfg.gistId;
+    if (cfg.tokenUrl) appConfig.tokenUrl = cfg.tokenUrl;
+    if (appConfig.gistId && !state.sync.gistId) {
+      state.sync.gistId = appConfig.gistId;
+      saveSyncSettings();
+    }
+    const getCode = document.getElementById("btn-get-code");
+    if (getCode && appConfig.tokenUrl) getCode.href = appConfig.tokenUrl;
+    renderSyncStatus();
+  } catch {
+    /* offline / no config */
+  }
+}
+
 function loadSyncSettings() {
   try {
     const raw = localStorage.getItem(SYNC_KEY);
-    if (!raw) return;
+    if (!raw) {
+      if (appConfig.gistId) state.sync.gistId = appConfig.gistId;
+      return;
+    }
     const data = JSON.parse(raw);
     state.sync.token = data.token || "";
-    state.sync.gistId = data.gistId || "";
+    state.sync.gistId = data.gistId || appConfig.gistId || "";
     state.sync.auto = data.auto !== false;
     state.sync.lastSync = data.lastSync || null;
   } catch {
@@ -1150,15 +1177,37 @@ function scheduleAutoSync() {
 }
 
 function openSyncModal() {
-  document.getElementById("sync-token").value = state.sync.token;
-  document.getElementById("sync-gist").value = state.sync.gistId;
+  document.getElementById("sync-token").value = "";
+  document.getElementById("sync-gist").value = state.sync.gistId || appConfig.gistId || "";
   document.getElementById("sync-auto").checked = state.sync.auto;
-  setSyncMessage(
-    state.sync.lastSync
-      ? `Последняя синхронизация: ${new Date(state.sync.lastSync).toLocaleString("ru-RU")}`
-      : "Синхронизация не настроена."
-  );
+  const getCode = document.getElementById("btn-get-code");
+  if (getCode && appConfig.tokenUrl) getCode.href = appConfig.tokenUrl;
+
+  if (state.sync.token && state.sync.gistId) {
+    setSyncMessage(
+      state.sync.lastSync
+        ? `Всё подключено. Последняя синхронизация: ${new Date(state.sync.lastSync).toLocaleString("ru-RU")}`
+        : "Всё подключено. Данные синхронизируются автоматически."
+    );
+  } else {
+    setSyncMessage("Облако уже подготовлено. Нужно только получить код.");
+  }
   openModal("modal-sync");
+}
+
+async function connectCloud() {
+  const token = document.getElementById("sync-token").value.trim();
+  if (!token) {
+    setSyncMessage("Сначала получите код (кнопка выше) и вставьте его в поле.", true);
+    return;
+  }
+  state.sync.token = token;
+  if (!state.sync.gistId) state.sync.gistId = appConfig.gistId;
+  state.sync.auto = true;
+  saveSyncSettings();
+  renderSyncStatus();
+  setSyncMessage("Проверяю связь с облаком…");
+  await syncPush();
 }
 
 function handleSaveSync(e) {
@@ -1352,6 +1401,7 @@ function bindEvents() {
   document.getElementById("form-sync").addEventListener("submit", handleSaveSync);
   document.getElementById("btn-sync-push").addEventListener("click", () => syncPush());
   document.getElementById("btn-sync-pull").addEventListener("click", () => syncPull());
+  document.getElementById("btn-connect-cloud").addEventListener("click", () => connectCloud());
 
   // mobile sidebar
   document.getElementById("btn-menu").addEventListener("click", openSidebar);
@@ -1379,3 +1429,4 @@ if ("serviceWorker" in navigator) {
 loadState();
 bindEvents();
 render();
+loadAppConfig();

@@ -481,6 +481,8 @@ function render() {
   renderGrid();
   fillCategorySelect();
   renderSyncStatus();
+  const banner = document.getElementById("setup-banner");
+  if (banner) banner.hidden = !!(state.sync.token && state.sync.gistId);
 }
 
 function fillCategorySelect() {
@@ -1402,6 +1404,7 @@ function bindEvents() {
   document.getElementById("btn-sync-push").addEventListener("click", () => syncPush());
   document.getElementById("btn-sync-pull").addEventListener("click", () => syncPull());
   document.getElementById("btn-connect-cloud").addEventListener("click", () => connectCloud());
+  document.getElementById("btn-open-setup").addEventListener("click", openSyncModal);
 
   // mobile sidebar
   document.getElementById("btn-menu").addEventListener("click", openSidebar);

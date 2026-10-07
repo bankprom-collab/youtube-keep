@@ -1323,3 +1323,17 @@ img {
     animation: none !important;
   }
 }
+
+
+/* Category tree */
+.cat-row {
+  display: block;
+}
+
+.cat-row .cat-item {
+  margin: 1px 0;
+}
+
+.cat-item[data-depth] {
+  /* depth applied via inline padding on .cat-row */
+}

@@ -246,7 +246,8 @@
       <form id="form-category" class="form">
         <div class="field">
           <label for="cat-name">Название</label>
-          <input id="cat-name" type="text" required placeholder="Например: Frontend, Музыка, Лекции" maxlength="40" />
+          <input id="cat-name" type="text" required placeholder="Например: Frontend, Курсы, Live" maxlength="40" />
+          <p class="hint" id="cat-parent-label">Верхний уровень (направление)</p>
         </div>
         <div class="field">
           <label>Цвет</label>
@@ -345,6 +346,16 @@
             <div class="wizard-title">Вставить код</div>
             <input id="sync-token" class="wizard-input" type="password" autocomplete="one-time-code" placeholder="Вставьте код сюда (ghp_…)" />
             <button type="button" class="primary-btn wizard-btn" id="btn-connect-cloud">Подключить и сохранить</button>
+          </div>
+        </div>
+
+        <div class="wizard-step" id="device-link-box" hidden>
+          <div class="wizard-num">3</div>
+          <div class="wizard-body">
+            <div class="wizard-title">Ссылка для других устройств</div>
+            <p class="hint">Скопируйте и откройте на Mac / телефоне / планшете — код вводить не нужно, устройство подключится само.</p>
+            <input id="device-link" class="wizard-input" type="text" readonly />
+            <button type="button" class="primary-btn wizard-btn" id="btn-copy-device-link">Скопировать ссылку</button>
           </div>
         </div>
 

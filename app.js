@@ -33,6 +33,7 @@ const state = {
   sort: "updated",
   editingLinkId: null,
   editingCategoryId: null,
+  editingCategoryParentId: null,
   selectedColor: "default",
   selectedCatColor: CAT_COLORS[0],
   pendingConfirm: null,
@@ -110,7 +111,7 @@ function loadState() {
       // migrate from v1 if present
       const legacy = localStorage.getItem("youtube-keep:v1");
       if (legacy) {
-        const data = JSON.parse(legacy);
+        const data = parseJsonSafe(legacy);
         state.links = (data.links || []).map(normalizeLink);
         state.categories = data.categories || [];
       }
@@ -119,9 +120,14 @@ function loadState() {
       loadSyncSettings();
       return;
     }
-    const data = JSON.parse(raw);
+    const data = parseJsonSafe(raw);
     state.links = (data.links || []).map(normalizeLink);
-    state.categories = Array.isArray(data.categories) ? data.categories : [];
+    state.categories = (Array.isArray(data.categories) ? data.categories : []).map((c) => ({
+      id: c.id || uid(),
+      name: c.name || "Без названия",
+      color: c.color || CAT_COLORS[0],
+      parentId: c.parentId || null,
+    }));
     if (!state.categories.length) seedDefaults();
     loadSyncSettings();
   } catch {
@@ -177,7 +183,7 @@ function loadSyncSettings() {
       if (appConfig.gistId) state.sync.gistId = appConfig.gistId;
       return;
     }
-    const data = JSON.parse(raw);
+    const data = parseJsonSafe(raw);
     state.sync.token = data.token || "";
     state.sync.gistId = data.gistId || appConfig.gistId || "";
     state.sync.auto = data.auto !== false;
@@ -200,11 +206,21 @@ function saveSyncSettings() {
 }
 
 function seedDefaults() {
+  const edu = uid();
+  const music = uid();
+  const dev = uid();
+  const insp = uid();
   state.categories = [
-    { id: uid(), name: "Образование", color: CAT_COLORS[2] },
-    { id: uid(), name: "Музыка", color: CAT_COLORS[4] },
-    { id: uid(), name: "Разработка", color: CAT_COLORS[3] },
-    { id: uid(), name: "Вдохновение", color: CAT_COLORS[0] },
+    { id: edu, name: "Образование", color: CAT_COLORS[2], parentId: null },
+    { id: uid(), name: "Курсы", color: CAT_COLORS[2], parentId: edu },
+    { id: uid(), name: "Лекции", color: CAT_COLORS[2], parentId: edu },
+    { id: music, name: "Музыка", color: CAT_COLORS[4], parentId: null },
+    { id: uid(), name: "Клипы", color: CAT_COLORS[4], parentId: music },
+    { id: uid(), name: "Live", color: CAT_COLORS[4], parentId: music },
+    { id: dev, name: "Разработка", color: CAT_COLORS[3], parentId: null },
+    { id: uid(), name: "Frontend", color: CAT_COLORS[3], parentId: dev },
+    { id: uid(), name: "Backend", color: CAT_COLORS[3], parentId: dev },
+    { id: insp, name: "Вдохновение", color: CAT_COLORS[0], parentId: null },
   ];
   saveState();
 }
@@ -284,7 +300,8 @@ function visibleLinks() {
     list = list.filter((l) => l.pinned);
   } else if (state.filter.startsWith("category:")) {
     const catId = state.filter.slice("category:".length);
-    list = list.filter((l) => l.categoryId === catId);
+    const ids = categoryDescendantIds(catId);
+    list = list.filter((l) => l.categoryId && ids.has(l.categoryId));
   }
 
   if (state.activeTags.size) {
@@ -324,29 +341,99 @@ function visibleLinks() {
 
 /* ---------- render ---------- */
 
+
+function categoryChildren(parentId) {
+  return state.categories.filter((c) => (c.parentId || null) === (parentId || null));
+}
+
+function categoryDescendantIds(id) {
+  const out = new Set([id]);
+  const walk = (pid) => {
+    for (const c of state.categories) {
+      if ((c.parentId || null) === (pid || null) && !out.has(c.id)) {
+        out.add(c.id);
+        walk(c.id);
+      }
+    }
+  };
+  walk(id);
+  return out;
+}
+
+function countLinksInCategory(id) {
+  const ids = categoryDescendantIds(id);
+  return state.links.filter((l) => l.categoryId && ids.has(l.categoryId)).length;
+}
+
+function categoryDepth(id) {
+  let depth = 0;
+  let cur = state.categories.find((c) => c.id === id);
+  const seen = new Set();
+  while (cur?.parentId && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    depth += 1;
+    cur = state.categories.find((c) => c.id === cur.parentId);
+  }
+  return depth;
+}
+
+function buildCategoryTreeRows(parentId = null, depth = 0) {
+  const rows = [];
+  const kids = categoryChildren(parentId).sort((a, b) =>
+    String(a.name || "").localeCompare(String(b.name || ""), "ru")
+  );
+  for (const cat of kids) {
+    rows.push({ cat, depth, children: categoryChildren(cat.id).length });
+    rows.push(...buildCategoryTreeRows(cat.id, depth + 1));
+  }
+  return rows;
+}
+
+function categoryPathLabel(id) {
+  const parts = [];
+  let cur = state.categories.find((c) => c.id === id);
+  const seen = new Set();
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    parts.unshift(cur.name);
+    cur = cur.parentId ? state.categories.find((c) => c.id === cur.parentId) : null;
+  }
+  return parts.join(" / ");
+}
+
 function renderCategories() {
   const list = document.getElementById("category-list");
-  list.innerHTML = state.categories
-    .map((cat) => {
-      const count = state.links.filter((l) => l.categoryId === cat.id).length;
-      const active = state.filter === `category:${cat.id}`;
-      return `
-        <button class="cat-item ${active ? "active" : ""}" data-category-id="${cat.id}" type="button">
-          <span class="cat-dot" style="background:${cat.color}"></span>
-          <span>${escapeHtml(cat.name)}</span>
-          <span class="nav-count">${count}</span>
-          <span class="cat-actions">
-            <span class="mini-btn" data-edit-cat="${cat.id}" title="Переименовать" role="button" tabindex="0">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+  const rows = buildCategoryTreeRows();
+  if (!rows.length) {
+    list.innerHTML = `<div class="hint">Направлений пока нет</div>`;
+  } else {
+    list.innerHTML = rows
+      .map(({ cat, depth, children }) => {
+        const count = countLinksInCategory(cat.id);
+        const active = state.filter === `category:${cat.id}`;
+        return `
+        <div class="cat-row" style="padding-left:${depth * 16}px">
+          <button class="cat-item ${active ? "active" : ""}" data-category-id="${cat.id}" type="button">
+            <span class="cat-dot" style="background:${cat.color}"></span>
+            <span title="${escapeHtml(categoryPathLabel(cat.id))}">${escapeHtml(cat.name)}</span>
+            <span class="nav-count">${count}</span>
+            <span class="cat-actions">
+              <span class="mini-btn" data-add-sub="${cat.id}" title="Подпапка" role="button" tabindex="0">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+              </span>
+              <span class="mini-btn" data-edit-cat="${cat.id}" title="Переименовать" role="button" tabindex="0">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+              </span>
+              <span class="mini-btn" data-del-cat="${cat.id}" title="Удалить" role="button" tabindex="0">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+              </span>
             </span>
-            <span class="mini-btn" data-del-cat="${cat.id}" title="Удалить" role="button" tabindex="0">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
-            </span>
-          </span>
-        </button>
+          </button>
+        </div>
       `;
-    })
-    .join("");
+      })
+      .join("");
+  }
 
   document.getElementById("count-all").textContent = state.links.length;
   document.getElementById("count-pinned").textContent = state.links.filter((l) => l.pinned).length;
@@ -374,7 +461,7 @@ function renderGrid() {
   } else if (state.filter.startsWith("category:")) {
     const cat = state.categories.find((c) => c.id === state.filter.slice("category:".length));
     titleEl.textContent = cat?.name || "Направление";
-    subEl.textContent = "Ссылки этого направления";
+    subEl.textContent = cat ? categoryPathLabel(cat.id) : "Ссылки этой папки";
   } else {
     titleEl.textContent = "Все ссылки";
     subEl.textContent = "Сохраняйте ролики и разбирайте их по направлениям";
@@ -499,10 +586,14 @@ function render() {
 }
 
 function fillCategorySelect() {
+  const rows = buildCategoryTreeRows();
   const options =
-    `<option value="">Без направления</option>` +
-    state.categories
-      .map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`)
+    `<option value="">Без папки</option>` +
+    rows
+      .map(({ cat, depth }) => {
+        const pad = "\u00A0".repeat(depth * 2);
+        return `<option value="${cat.id}">${pad}${escapeHtml(categoryPathLabel(cat.id))}</option>`;
+      })
       .join("");
   for (const id of ["link-category", "import-category"]) {
     const select = document.getElementById(id);
@@ -512,8 +603,6 @@ function fillCategorySelect() {
     if ([...select.options].some((o) => o.value === current)) select.value = current;
   }
 }
-
-/* ---------- modals ---------- */
 
 function openModal(id) {
   document.getElementById(id).hidden = false;
@@ -597,18 +686,28 @@ function openLinkModalRefreshColors() {
   });
 }
 
-function openCategoryModal(category = null) {
+function openCategoryModal(category = null, parentCatId = null) {
   const isEdit = !!category;
+  const parentId = isEdit ? category.parentId || null : parentCatId || null;
   document.getElementById("modal-cat-title").textContent = isEdit
-    ? "Редактировать направление"
-    : "Новое направление";
+    ? "Редактировать папку"
+    : parentId
+      ? "Новая подпапка"
+      : "Новое направление";
   document.getElementById("cat-submit").textContent = isEdit ? "Сохранить" : "Создать";
   document.getElementById("cat-name").value = category?.name || "";
   state.selectedCatColor = category?.color || CAT_COLORS[0];
   state.editingCategoryId = category?.id || null;
+  state.editingCategoryParentId = parentId;
+
+  const parentLabel = document.getElementById("cat-parent-label");
+  if (parentLabel) {
+    parentLabel.textContent = parentId
+      ? `В папке: ${categoryPathLabel(parentId)}`
+      : "Верхний уровень (направление)";
+  }
 
   openCategoryModalRefresh();
-
   openModal("modal-category");
   setTimeout(() => document.getElementById("cat-name").focus(), 50);
 }
@@ -732,14 +831,15 @@ function handleSaveCategory(e) {
       cat.name = name;
       cat.color = state.selectedCatColor;
     }
-    toast("Направление обновлено");
+    toast("Папка обновлена");
   } else {
     state.categories.push({
       id: uid(),
       name,
       color: state.selectedCatColor,
+      parentId: state.editingCategoryParentId || null,
     });
-    toast("Направление создано");
+    toast("Папка создана");
   }
 
   saveState();
@@ -773,13 +873,18 @@ function deleteLink(id) {
 
 function deleteCategory(id) {
   const cat = state.categories.find((c) => c.id === id);
-  const count = state.links.filter((l) => l.categoryId === id).length;
+  const kids = categoryChildren(id);
+  const count = countLinksInCategory(id);
   confirmAction(
-    "Удалить направление?",
-    count
-      ? `«${cat?.name}»: ${count} ссылок останутся без направления.`
-      : `«${cat?.name}» будет удалено.`,
+    "Удалить папку?",
+    count || kids.length
+      ? `«${cat?.name}»: вложенные папки станут на уровень выше, ссылки останутся без папки (${count}).`
+      : `«${cat?.name}» будет удалена.`,
     () => {
+      const parent = cat?.parentId || null;
+      state.categories = state.categories.map((c) =>
+        c.parentId === id ? { ...c, parentId: parent } : c
+      );
       state.links = state.links.map((l) =>
         l.categoryId === id ? { ...l, categoryId: null } : l
       );
@@ -787,7 +892,7 @@ function deleteCategory(id) {
       if (state.filter === `category:${id}`) state.filter = "all";
       saveState();
       render();
-      toast("Направление удалено");
+      toast("Папка удалена");
     }
   );
 }
@@ -809,7 +914,7 @@ function importData(file) {
   const reader = new FileReader();
   reader.onload = () => {
     try {
-      const data = JSON.parse(reader.result);
+      const data = parseJsonSafe(reader.result);
       if (!Array.isArray(data.links)) throw new Error("bad file");
       if (Array.isArray(data.categories) && data.categories.length) {
         state.categories = data.categories;
@@ -853,7 +958,7 @@ function extractYouTubeEntriesFromText(text) {
   const trimmed = text.trim();
   if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
     try {
-      const json = JSON.parse(trimmed);
+      const json = parseJsonSafe(trimmed);
       const arr = Array.isArray(json) ? json : json.links || json.items || json.videos || [];
       for (const row of arr) {
         const url = row.url || row.href || row.link || row.videoId || "";
@@ -1180,7 +1285,7 @@ async function syncPull(opts = {}) {
     const file = gist.files?.["youtube-keep.json"] || Object.values(gist.files || {})[0];
     if (!file?.content) throw new Error("В облаке пока нет данных — сначала нажмите «Отправить» на главном устройстве.");
 
-    const data = JSON.parse(file.content);
+    const data = parseJsonSafe(file.content);
     if (!Array.isArray(data.links)) throw new Error("Некорректный формат данных");
 
     // merge: keep newer by updatedAt per id
@@ -1196,15 +1301,19 @@ async function syncPull(opts = {}) {
     const alias = new Map(); // oldId -> canonicalId
     const putCat = (cat) => {
       if (!cat?.name) return;
-      const key = String(cat.name).trim().toLowerCase();
+      const key = `${cat.parentId || ""}::${String(cat.name).trim().toLowerCase()}`;
       const existing = catByName.get(key);
       if (!existing) {
         const id = cat.id || uid();
-        catByName.set(key, { ...cat, id, name: String(cat.name).trim() });
+        catByName.set(key, {
+          ...cat,
+          id,
+          name: String(cat.name).trim(),
+          parentId: cat.parentId || null,
+        });
         alias.set(cat.id, id);
       } else {
         alias.set(cat.id, existing.id);
-        // keep existing color/id
       }
     };
     for (const cat of state.categories) putCat(cat);
@@ -1308,10 +1417,16 @@ function openSyncModal() {
         ? `Всё подключено. Последняя синхронизация: ${new Date(state.sync.lastSync).toLocaleString("ru-RU")}`
         : "Всё подключено. Данные синхронизируются автоматически."
     );
+    fillDeviceLink();
   } else {
     setSyncMessage("Облако уже подготовлено. Нужно только получить код.");
   }
   openModal("modal-sync");
+}
+
+function parseJsonSafe(text) {
+  const cleaned = String(text || "").replace(/^\uFEFF/, "").trim();
+  return JSON.parse(cleaned);
 }
 
 function extractGitHubToken(raw) {
@@ -1323,6 +1438,67 @@ function extractGitHubToken(raw) {
   if (m) return m[0];
   const cleaned = text.replace(/[\s"'`]+/g, "");
   return cleaned || "";
+}
+
+/** One-click connect on another device: #t=token&g=gistId */
+function applyHashCredentials() {
+  const hash = window.location.hash.replace(/^#/, "");
+  if (!hash) return false;
+  const params = new URLSearchParams(hash);
+  const token = extractGitHubToken(params.get("t") || params.get("token") || "");
+  const gistId = (params.get("g") || params.get("gist") || "").trim();
+  if (!token && !gistId) return false;
+
+  if (token) state.sync.token = token;
+  if (gistId) state.sync.gistId = gistId;
+  else if (!state.sync.gistId) state.sync.gistId = appConfig.gistId;
+  state.sync.auto = true;
+  saveSyncSettings();
+
+  const clean = window.location.pathname + window.location.search;
+  window.history.replaceState(null, "", clean);
+  render();
+  startCloudWatch();
+  syncAll().catch(() => {});
+  toast("Устройство подключено к облаку");
+  return true;
+}
+
+function deviceLink() {
+  const token = state.sync.token;
+  const gist = state.sync.gistId || appConfig.gistId;
+  if (!token) return "";
+  const base = window.location.origin + window.location.pathname;
+  return base + "#t=" + encodeURIComponent(token) + "&g=" + encodeURIComponent(gist || "");
+}
+
+function fillDeviceLink() {
+  const input = document.getElementById("device-link");
+  const box = document.getElementById("device-link-box");
+  if (!input || !box) return;
+  const link = deviceLink();
+  if (!link) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  input.value = link;
+}
+
+async function copyDeviceLink() {
+  const link = deviceLink();
+  if (!link) return;
+  try {
+    await navigator.clipboard.writeText(link);
+    toast("Ссылка скопирована. Откройте её на Mac и телефоне.");
+  } catch {
+    const input = document.getElementById("device-link");
+    if (input) {
+      input.focus();
+      input.select();
+    }
+    toast("Скопируйте ссылку вручную (Ctrl/Cmd+C)");
+  }
 }
 
 async function connectCloud() {
@@ -1344,8 +1520,10 @@ async function connectCloud() {
   state.sync.auto = true;
   saveSyncSettings();
   renderSyncStatus();
+  fillDeviceLink();
   setSyncMessage("Проверяю связь с облаком…");
   await syncPush();
+  fillDeviceLink();
 }
 
 function handleSaveSync(e) {
@@ -1373,8 +1551,14 @@ function bindEvents() {
   });
 
   document.getElementById("category-list").addEventListener("click", (e) => {
+    const addSub = e.target.closest("[data-add-sub]");
     const edit = e.target.closest("[data-edit-cat]");
     const del = e.target.closest("[data-del-cat]");
+    if (addSub) {
+      e.stopPropagation();
+      openCategoryModal(null, addSub.dataset.addSub);
+      return;
+    }
     if (edit) {
       e.stopPropagation();
       const cat = state.categories.find((c) => c.id === edit.dataset.editCat);
@@ -1542,6 +1726,7 @@ function bindEvents() {
   document.getElementById("btn-connect-cloud").addEventListener("click", () => connectCloud());
   document.getElementById("btn-open-setup").addEventListener("click", openSyncModal);
   document.getElementById("btn-sync-now").addEventListener("click", () => syncAll());
+  document.getElementById("btn-copy-device-link")?.addEventListener("click", () => copyDeviceLink());
 
   // mobile sidebar
   document.getElementById("btn-menu").addEventListener("click", openSidebar);
@@ -1569,4 +1754,4 @@ if ("serviceWorker" in navigator) {
 loadState();
 bindEvents();
 render();
-loadAppConfig();
+loadAppConfig().then(() => applyHashCredentials());

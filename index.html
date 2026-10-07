@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#FAF7F2" />
+  <meta name="description" content="YouTube Keep — библиотека YouTube-ссылок с направлениями" />
+  <title>YouTube Keep</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icons/icon-180.png" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar" aria-label="Направления">
+      <div class="sidebar-brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <rect x="2" y="5" width="20" height="14" rx="3.5" stroke="currentColor" stroke-width="1.8"/>
+            <path d="M10 9.5v5l4.5-2.5L10 9.5z" fill="currentColor"/>
+          </svg>
+        </div>
+        <div>
+          <div class="brand-name">YouTube Keep</div>
+          <div class="brand-sub">библиотека ссылок</div>
+        </div>
+      </div>
+
+      <nav class="nav" id="nav">
+        <button class="nav-item active" data-filter="all" type="button">
+          <span class="nav-icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          </span>
+          <span>Все ссылки</span>
+          <span class="nav-count" id="count-all">0</span>
+        </button>
+        <button class="nav-item" data-filter="pinned" type="button">
+          <span class="nav-icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l2.2 6.4H21l-5.3 3.9 2 6.4L12 16.8 6.3 19.7l2-6.4L3 9.4h6.8L12 3z"/></svg>
+          </span>
+          <span>Закреплённые</span>
+          <span class="nav-count" id="count-pinned">0</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-section">
+        <div class="sidebar-label">
+          <span>Направления</span>
+          <button class="icon-btn" id="btn-add-category" type="button" title="Добавить направление" aria-label="Добавить направление">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+        </div>
+        <div class="category-list" id="category-list"></div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-label">
+          <span>Теги</span>
+          <button class="icon-btn" id="btn-clear-tags" type="button" title="Сбросить фильтр тегов" aria-label="Сбросить фильтр тегов">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+        <div class="tag-list" id="tag-list"></div>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="sync-row">
+          <div class="sync-status" id="sync-status">
+            <span class="sync-dot" id="sync-dot"></span>
+            <span id="sync-label">Локально</span>
+          </div>
+          <button class="icon-btn" id="btn-sync-settings" type="button" title="Настройки синхронизации" aria-label="Настройки синхронизации">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+          </button>
+        </div>
+        <div class="sidebar-actions">
+          <button class="ghost-btn" id="btn-export" type="button">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 19h14"/></svg>
+            Экспорт
+          </button>
+          <button class="ghost-btn" id="btn-import" type="button">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21V9M7 14l5-5 5 5"/><path d="M5 5h14"/></svg>
+            Импорт
+          </button>
+        </div>
+        <button class="secondary-btn" id="btn-import-bookmarks" type="button">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4h12v16l-6-3.5L6 20V4z"/></svg>
+          Закладки YouTube
+        </button>
+        <input type="file" id="import-file" accept="application/json" hidden />
+      </div>
+    </aside>
+
+    <div class="sidebar-backdrop" id="sidebar-backdrop" hidden></div>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" id="btn-menu" type="button" aria-label="Меню">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </button>
+
+        <div class="search-wrap">
+          <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <input id="search" class="search-input" type="search" placeholder="Поиск по названию, заметке, тегам, ссылке…" autocomplete="off" />
+        </div>
+
+        <button class="primary-btn" id="btn-add" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+          <span class="btn-label">Добавить</span>
+        </button>
+      </header>
+
+      <div class="content-head">
+        <div>
+          <h1 class="page-title" id="page-title">Все ссылки</h1>
+          <p class="page-sub" id="page-sub">Сохраняйте ролики и разбирайте их по направлениям</p>
+        </div>
+        <div class="sort-wrap">
+          <label class="sort-label" for="sort">Сортировка</label>
+          <select id="sort" class="sort-select">
+            <option value="updated">Сначала новые</option>
+            <option value="pinned">Сначала закреплённые</option>
+            <option value="title">По названию</option>
+            <option value="category">По направлению</option>
+          </select>
+        </div>
+      </div>
+
+      <section class="grid" id="grid" aria-live="polite"></section>
+
+      <div class="empty" id="empty" hidden>
+        <div class="empty-visual" aria-hidden="true">
+          <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+            <rect x="8" y="14" width="48" height="36" rx="8" stroke="currentColor" stroke-width="2"/>
+            <path d="M28 26v12l12-6-12-6z" fill="currentColor"/>
+          </svg>
+        </div>
+        <h2 class="empty-title">Здесь пока пусто</h2>
+        <p class="empty-text">Добавьте первую YouTube-ссылку — она появится карточкой с превью.</p>
+        <button class="primary-btn" id="btn-empty-add" type="button">Добавить ссылку</button>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal: add / edit link -->
+  <div class="modal" id="modal-link" hidden>
+    <div class="modal-backdrop" data-close="modal-link"></div>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-link-title">
+      <div class="modal-head">
+        <h2 id="modal-link-title">Новая ссылка</h2>
+        <button class="icon-btn" type="button" data-close="modal-link" aria-label="Закрыть">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+
+      <form id="form-link" class="form">
+        <div class="field">
+          <label for="link-url">Ссылка на YouTube</label>
+          <div class="url-row">
+            <input id="link-url" name="url" type="url" required placeholder="https://www.youtube.com/watch?v=…" />
+            <button type="button" class="secondary-btn" id="btn-fetch">Подтянуть</button>
+          </div>
+          <p class="hint" id="fetch-hint">Можно вставить ссылку — название и превью подтянутся автоматически.</p>
+        </div>
+
+        <div class="preview-row" id="preview-row" hidden>
+          <img id="preview-thumb" alt="" />
+          <div class="preview-meta">
+            <div class="preview-title" id="preview-title"></div>
+            <div class="preview-channel" id="preview-channel"></div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="link-title">Название</label>
+          <input id="link-title" name="title" type="text" placeholder="Например: Как писать код без выгорания" />
+        </div>
+
+        <div class="field">
+          <label for="link-note">Заметка</label>
+          <textarea id="link-note" name="note" rows="3" placeholder="Зачем сохранили, что важно посмотреть…"></textarea>
+        </div>
+
+        <div class="field">
+          <label for="link-tags">Теги</label>
+          <input id="link-tags" name="tags" type="text" placeholder="код, лекция, must-watch — через запятую" />
+          <div class="tag-suggestions" id="tag-suggestions"></div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="link-category">Направление</label>
+            <select id="link-category" name="category"></select>
+          </div>
+          <div class="field">
+            <label for="link-color">Цвет карточки</label>
+            <div class="color-picks" id="color-picks" role="radiogroup" aria-label="Цвет карточки"></div>
+          </div>
+        </div>
+
+        <div class="field checkbox-field">
+          <label class="checkbox">
+            <input type="checkbox" id="link-pinned" />
+            <span>Закрепить</span>
+          </label>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="ghost-btn" data-close="modal-link">Отмена</button>
+          <button type="submit" class="primary-btn">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: category -->
+  <div class="modal" id="modal-category" hidden>
+    <div class="modal-backdrop" data-close="modal-category"></div>
+    <div class="modal-card modal-card-sm" role="dialog" aria-modal="true" aria-labelledby="modal-cat-title">
+      <div class="modal-head">
+        <h2 id="modal-cat-title">Новое направление</h2>
+        <button class="icon-btn" type="button" data-close="modal-category" aria-label="Закрыть">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <form id="form-category" class="form">
+        <div class="field">
+          <label for="cat-name">Название</label>
+          <input id="cat-name" type="text" required placeholder="Например: Frontend, Музыка, Лекции" maxlength="40" />
+        </div>
+        <div class="field">
+          <label>Цвет</label>
+          <div class="color-picks" id="cat-color-picks" role="radiogroup" aria-label="Цвет направления"></div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="ghost-btn" data-close="modal-category">Отмена</button>
+          <button type="submit" class="primary-btn" id="cat-submit">Создать</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: import bookmarks -->
+  <div class="modal" id="modal-import" hidden>
+    <div class="modal-backdrop" data-close="modal-import"></div>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-import-title">
+      <div class="modal-head">
+        <h2 id="modal-import-title">Импорт закладок</h2>
+        <button class="icon-btn" type="button" data-close="modal-import" aria-label="Закрыть">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+
+      <div class="form">
+        <div class="field">
+          <label>Файл закладок или выгрузки</label>
+          <p class="hint">Поддерживается: HTML-закладки Chrome/Firefox/Safari, CSV/JSON из Google Takeout, список URL в txt.</p>
+          <div class="file-drop" id="file-drop">
+            <input type="file" id="bookmarks-file" accept=".html,.htm,.csv,.json,.txt,text/html,text/csv,application/json,text/plain" />
+            <div class="file-drop-inner">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 20h16"/></svg>
+              <div><strong>Выберите файл</strong> или перетащите его сюда</div>
+            </div>
+          </div>
+          <p class="hint" id="import-file-info">Файл не выбран</p>
+        </div>
+
+        <div class="field">
+          <label for="import-paste">Или вставьте ссылки списком</label>
+          <textarea id="import-paste" rows="4" placeholder="https://www.youtube.com/watch?v=…&#10;https://youtu.be/…"></textarea>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="import-category">Направление по умолчанию</label>
+            <select id="import-category"></select>
+          </div>
+          <div class="field">
+            <label for="import-tags">Теги по умолчанию</label>
+            <input id="import-tags" type="text" placeholder="импорт, старое" />
+          </div>
+        </div>
+
+        <div class="import-preview" id="import-preview" hidden>
+          <div class="import-preview-title">Найдено ссылок: <strong id="import-count">0</strong></div>
+          <ul class="import-preview-list" id="import-preview-list"></ul>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="ghost-btn" data-close="modal-import">Отмена</button>
+          <button type="button" class="primary-btn" id="btn-run-import">Импортировать</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: sync settings -->
+  <div class="modal" id="modal-sync" hidden>
+    <div class="modal-backdrop" data-close="modal-sync"></div>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-sync-title">
+      <div class="modal-head">
+        <h2 id="modal-sync-title">Облачная синхронизация</h2>
+        <button class="icon-btn" type="button" data-close="modal-sync" aria-label="Закрыть">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+
+      <form id="form-sync" class="form">
+        <p class="hint sync-lead">Данные сохраняются в секретный GitHub Gist. Работает на macOS, Windows и Android — входите одним токеном на всех устройствах.</p>
+
+        <div class="field">
+          <label for="sync-token">GitHub Personal Access Token</label>
+          <input id="sync-token" type="password" autocomplete="off" placeholder="ghp_… или github_pat_…" />
+          <p class="hint">Нужен токен с правом <code>gist</code>. Создайте его на github.com/settings/tokens.</p>
+        </div>
+
+        <div class="field">
+          <label for="sync-gist">Gist ID</label>
+          <input id="sync-gist" type="text" placeholder="Оставьте пустым — создам новый" />
+          <p class="hint">На втором устройстве вставьте тот же токен и ID созданного gist.</p>
+        </div>
+
+        <div class="field checkbox-field">
+          <label class="checkbox">
+            <input type="checkbox" id="sync-auto" checked />
+            <span>Автоматическая синхронизация при изменениях</span>
+          </label>
+        </div>
+
+        <div class="sync-actions-row">
+          <button type="button" class="secondary-btn" id="btn-sync-push">Отправить в облако</button>
+          <button type="button" class="secondary-btn" id="btn-sync-pull">Загрузить из облака</button>
+        </div>
+
+        <p class="hint" id="sync-message">Синхронизация не настроена.</p>
+
+        <div class="modal-actions">
+          <button type="button" class="ghost-btn" data-close="modal-sync">Закрыть</button>
+          <button type="submit" class="primary-btn">Сохранить настройки</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Confirm delete -->
+  <div class="modal" id="modal-confirm" hidden>
+    <div class="modal-backdrop" data-close="modal-confirm"></div>
+    <div class="modal-card modal-card-sm" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h2 id="confirm-title">Удалить?</h2>
+        <button class="icon-btn" type="button" data-close="modal-confirm" aria-label="Закрыть">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <p class="confirm-text" id="confirm-text">Это действие нельзя отменить.</p>
+      <div class="modal-actions">
+        <button type="button" class="ghost-btn" data-close="modal-confirm">Отмена</button>
+        <button type="button" class="danger-btn" id="confirm-ok">Удалить</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

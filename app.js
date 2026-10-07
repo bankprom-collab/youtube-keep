@@ -1288,15 +1288,29 @@ function openSyncModal() {
   openModal("modal-sync");
 }
 
+function extractGitHubToken(raw) {
+  const text = String(raw || "").replace(/[\u200B-\u200D\uFEFF]/g, "");
+  // find a token-like string even if user pasted extra words/quotes
+  const m =
+    text.match(/gh[pousr]_[A-Za-z0-9_]{20,}/) ||
+    text.match(/github_pat_[A-Za-z0-9_]{20,}/);
+  if (m) return m[0];
+  const cleaned = text.replace(/[\s"'`]+/g, "");
+  return cleaned || "";
+}
+
 async function connectCloud() {
-  const raw = document.getElementById("sync-token").value.trim();
-  const token = raw.replace(/^["'\s]+|["'\s]+$/g, "").replace(/\s+/g, "");
+  const raw = document.getElementById("sync-token").value;
+  const token = extractGitHubToken(raw);
   if (!token) {
-    setSyncMessage("Сначала получите код (кнопка выше) и вставьте его в поле.", true);
+    setSyncMessage("Вставьте код доступа целиком (он длинный, начинается на ghp_).", true);
     return;
   }
-  if (!/^gh[pousr]_|^github_pat_/.test(token)) {
-    setSyncMessage("Похоже, это не код доступа GitHub. Он начинается на ghp_ или github_pat_.", true);
+  if (!/^gh[pousr]_[A-Za-z0-9_]+$/.test(token) && !/^github_pat_[A-Za-z0-9_]+$/.test(token)) {
+    setSyncMessage(
+      `В поле нет нормального кода GitHub. Нужен текст вида ghp_… (сейчас вижу «${String(raw).slice(0, 24)}…»). Скопируйте только код.`,
+      true
+    );
     return;
   }
   state.sync.token = token;

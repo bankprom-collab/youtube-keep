@@ -487,9 +487,15 @@ function render() {
   renderSyncStatus();
   const setup = document.getElementById("setup-banner");
   const sync = document.getElementById("sync-banner");
-  const ready = !!(state.sync.token && state.sync.gistId);
-  if (setup) setup.hidden = ready;
-  if (sync) sync.hidden = !ready;
+  const ready = isCloudReady();
+  if (setup) {
+    if (ready) setup.setAttribute("hidden", "");
+    else setup.removeAttribute("hidden");
+  }
+  if (sync) {
+    if (ready) sync.removeAttribute("hidden");
+    else sync.setAttribute("hidden", "");
+  }
 }
 
 function fillCategorySelect() {
@@ -1185,14 +1191,34 @@ async function syncPull(opts = {}) {
       if (!prev || (norm.updatedAt || "") > (prev.updatedAt || "")) map.set(norm.id, norm);
     }
     state.links = [...map.values()];
-    if (Array.isArray(data.categories) && data.categories.length) {
-      const catMap = new Map(state.categories.map((c) => [c.id, c]));
-      for (const cat of data.categories) {
-        const prev = catMap.get(cat.id);
-        catMap.set(cat.id, prev ? { ...prev, ...cat } : cat);
+    // Merge categories by NAME (not id) to avoid "Вдохновение" x2
+    const catByName = new Map();
+    const alias = new Map(); // oldId -> canonicalId
+    const putCat = (cat) => {
+      if (!cat?.name) return;
+      const key = String(cat.name).trim().toLowerCase();
+      const existing = catByName.get(key);
+      if (!existing) {
+        const id = cat.id || uid();
+        catByName.set(key, { ...cat, id, name: String(cat.name).trim() });
+        alias.set(cat.id, id);
+      } else {
+        alias.set(cat.id, existing.id);
+        // keep existing color/id
       }
-      state.categories = [...catMap.values()];
-    }
+    };
+    for (const cat of state.categories) putCat(cat);
+    for (const cat of data.categories || []) putCat(cat);
+    state.categories = [...catByName.values()];
+    state.links = state.links.map((l) => ({
+      ...l,
+      categoryId: l.categoryId ? alias.get(l.categoryId) || l.categoryId : null,
+    }));
+    // drop links pointing at missing categories? keep them as null
+    const validIds = new Set(state.categories.map((c) => c.id));
+    state.links = state.links.map((l) =>
+      l.categoryId && !validIds.has(l.categoryId) ? { ...l, categoryId: null } : l
+    );
 
     saveState({ sync: false });
     state.sync.lastSync = nowIso();

@@ -1337,3 +1337,117 @@ img {
 .cat-item[data-depth] {
   /* depth applied via inline padding on .cat-row */
 }
+
+
+/* Drill-down folders */
+.breadcrumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 0.875rem;
+}
+
+.crumb {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  color: var(--ink-2);
+  background: transparent;
+  font-weight: 500;
+}
+
+.crumb:hover {
+  background: var(--bg-soft);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.crumb-sep {
+  color: var(--ink-3);
+}
+
+.folder-strip-wrap:empty {
+  display: none;
+}
+
+.folder-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-3);
+  padding: 0 var(--space-6) var(--space-4);
+}
+
+.folder-tile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  text-align: left;
+  transition: border-color 160ms var(--ease), transform 160ms var(--ease);
+}
+
+.folder-tile:hover {
+  border-color: var(--folder-color, var(--line-strong));
+  transform: translateY(-1px);
+}
+
+.folder-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--folder-color, #c2410c) 15%, white);
+  color: var(--folder-color, #c2410c);
+  flex-shrink: 0;
+}
+
+.folder-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-count {
+  color: var(--ink-3);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.folder-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+}
+
+.folder-tile:hover .folder-actions {
+  opacity: 1;
+}
+
+.folder-actions .mini-btn {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--ink-2);
+  background: var(--bg-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+@media (max-width: 960px) {
+  .folder-strip {
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+}

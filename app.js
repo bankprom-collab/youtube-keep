@@ -403,33 +403,33 @@ function categoryPathLabel(id) {
 
 function renderCategories() {
   const list = document.getElementById("category-list");
-  const rows = buildCategoryTreeRows();
-  if (!rows.length) {
+  const roots = categoryChildren(null).sort((a, b) =>
+    String(a.name || "").localeCompare(String(b.name || ""), "ru")
+  );
+  if (!roots.length) {
     list.innerHTML = `<div class="hint">Направлений пока нет</div>`;
   } else {
-    list.innerHTML = rows
-      .map(({ cat, depth, children }) => {
+    list.innerHTML = roots
+      .map((cat) => {
         const count = countLinksInCategory(cat.id);
         const active = state.filter === `category:${cat.id}`;
         return `
-        <div class="cat-row" style="padding-left:${depth * 16}px">
-          <button class="cat-item ${active ? "active" : ""}" data-category-id="${cat.id}" type="button">
-            <span class="cat-dot" style="background:${cat.color}"></span>
-            <span title="${escapeHtml(categoryPathLabel(cat.id))}">${escapeHtml(cat.name)}</span>
-            <span class="nav-count">${count}</span>
-            <span class="cat-actions">
-              <span class="mini-btn" data-add-sub="${cat.id}" title="Подпапка" role="button" tabindex="0">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-              </span>
-              <span class="mini-btn" data-edit-cat="${cat.id}" title="Переименовать" role="button" tabindex="0">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-              </span>
-              <span class="mini-btn" data-del-cat="${cat.id}" title="Удалить" role="button" tabindex="0">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
-              </span>
+        <button class="cat-item ${active ? "active" : ""}" data-category-id="${cat.id}" type="button">
+          <span class="cat-dot" style="background:${cat.color}"></span>
+          <span>${escapeHtml(cat.name)}</span>
+          <span class="nav-count">${count}</span>
+          <span class="cat-actions">
+            <span class="mini-btn" data-add-sub="${cat.id}" title="Новая подпапка" role="button" tabindex="0">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
             </span>
-          </button>
-        </div>
+            <span class="mini-btn" data-edit-cat="${cat.id}" title="Переименовать" role="button" tabindex="0">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            </span>
+            <span class="mini-btn" data-del-cat="${cat.id}" title="Удалить" role="button" tabindex="0">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+            </span>
+          </span>
+        </button>
       `;
       })
       .join("");
@@ -447,34 +447,135 @@ function renderCategories() {
   });
 }
 
+function currentFolderId() {
+  if (!state.filter.startsWith("category:")) return null;
+  return state.filter.slice("category:".length) || null;
+}
+
+function breadcrumbHtml(folderId) {
+  const parts = [];
+  let cur = folderId ? state.categories.find((c) => c.id === folderId) : null;
+  const seen = new Set();
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    parts.unshift(cur);
+    cur = cur.parentId ? state.categories.find((c) => c.id === cur.parentId) : null;
+  }
+  const items = [`<button type="button" class="crumb" data-goto-folder="">Все ссылки</button>`];
+  for (const part of parts) {
+    items.push(`<span class="crumb-sep">/</span>`);
+    items.push(
+      `<button type="button" class="crumb" data-goto-folder="${part.id}">${escapeHtml(part.name)}</button>`
+    );
+  }
+  return items.join("");
+}
+
+function folderTilesHtml(folderId) {
+  const kids = categoryChildren(folderId).sort((a, b) =>
+    String(a.name || "").localeCompare(String(b.name || ""), "ru")
+  );
+  if (!kids.length) return "";
+  return `
+    <div class="folder-strip">
+      ${kids
+        .map(
+          (cat) => `
+        <button type="button" class="folder-tile" data-open-folder="${cat.id}" style="--folder-color:${cat.color}">
+          <span class="folder-icon" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M3 7.5A2.5 2.5 0 015.5 5H9l2 2.5h7.5A2.5 2.5 0 0121 10v7.5a2.5 2.5 0 01-2.5 2.5h-13A2.5 2.5 0 013 17.5v-10z"/>
+            </svg>
+          </span>
+          <span class="folder-name">${escapeHtml(cat.name)}</span>
+          <span class="folder-count">${countLinksInCategory(cat.id)}</span>
+          <span class="folder-actions">
+            <span class="mini-btn" data-add-sub="${cat.id}" title="Новая подпапка" role="button" tabindex="0">+</span>
+            <span class="mini-btn" data-edit-cat="${cat.id}" title="Переименовать" role="button" tabindex="0">✎</span>
+          </span>
+        </button>`
+        )
+        .join("")}
+    </div>
+  `;
+}
+
 function renderGrid() {
   const grid = document.getElementById("grid");
   const empty = document.getElementById("empty");
-  const links = visibleLinks();
+  const folderId = currentFolderId();
 
-  // page title
+  // drill-down: only links sitting in THIS folder (subfolders are tiles)
+  let list = [...state.links];
+  if (state.filter === "pinned") {
+    list = list.filter((l) => l.pinned);
+  } else if (folderId) {
+    list = list.filter((l) => l.categoryId === folderId);
+  }
+
+  if (state.activeTags.size) {
+    list = list.filter((l) => {
+      const tags = (l.tags || []).map((t) => t.toLowerCase());
+      return [...state.activeTags].every((t) => tags.includes(t));
+    });
+  }
+
+  const q = state.query.trim().toLowerCase();
+  if (q) {
+    list = list.filter((l) => {
+      const cat = state.categories.find((c) => c.id === l.categoryId);
+      const hay = [l.title, l.note, l.url, cat?.name, (l.tags || []).join(" ")]
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }
+
+  const sort = state.sort;
+  list.sort((a, b) => {
+    if (sort === "title") return (a.title || "").localeCompare(b.title || "", "ru");
+    if (sort === "category") {
+      const an = state.categories.find((c) => c.id === a.categoryId)?.name || "";
+      const bn = state.categories.find((c) => c.id === b.categoryId)?.name || "";
+      return an.localeCompare(bn, "ru") || (a.title || "").localeCompare(b.title || "", "ru");
+    }
+    if (sort === "pinned") {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+    }
+    return (b.updatedAt || b.createdAt || "").localeCompare(a.updatedAt || a.createdAt || "");
+  });
+
   const titleEl = document.getElementById("page-title");
   const subEl = document.getElementById("page-sub");
+  const crumbEl = document.getElementById("breadcrumbs");
+  const folderStrip = document.getElementById("folder-strip");
+
   if (state.filter === "pinned") {
     titleEl.textContent = "Закреплённые";
     subEl.textContent = "Самое важное — под рукой";
-  } else if (state.filter.startsWith("category:")) {
-    const cat = state.categories.find((c) => c.id === state.filter.slice("category:".length));
-    titleEl.textContent = cat?.name || "Направление";
-    subEl.textContent = cat ? categoryPathLabel(cat.id) : "Ссылки этой папки";
+    if (crumbEl) crumbEl.innerHTML = "";
+    if (folderStrip) folderStrip.innerHTML = "";
+  } else if (folderId) {
+    const cat = state.categories.find((c) => c.id === folderId);
+    titleEl.textContent = cat?.name || "Папка";
+    subEl.textContent = "Нажмите подпапку, чтобы зайти внутрь";
+    if (crumbEl) crumbEl.innerHTML = breadcrumbHtml(folderId);
+    if (folderStrip) folderStrip.innerHTML = folderTilesHtml(folderId);
   } else {
     titleEl.textContent = "Все ссылки";
-    subEl.textContent = "Сохраняйте ролики и разбирайте их по направлениям";
+    subEl.textContent = "Выберите направление слева или папку ниже";
+    if (crumbEl) crumbEl.innerHTML = "";
+    if (folderStrip) folderStrip.innerHTML = folderTilesHtml(null);
   }
 
-  if (!links.length) {
+  if (!list.length && !(folderStrip && folderStrip.innerHTML)) {
     grid.innerHTML = "";
     empty.hidden = false;
     return;
   }
   empty.hidden = true;
 
-  grid.innerHTML = links
+  grid.innerHTML = list
     .map((link) => {
       const cat = state.categories.find((c) => c.id === link.categoryId);
       const videoId = link.videoId || parseYouTubeId(link.url);
@@ -510,7 +611,7 @@ function renderGrid() {
               ${
                 cat
                   ? `<span class="chip"><span class="chip-dot" style="background:${cat.color}"></span>${escapeHtml(cat.name)}</span>`
-                  : `<span class="chip">Без направления</span>`
+                  : `<span class="chip">Без папки</span>`
               }
               <div class="card-actions">
                 <button class="icon-btn ${link.pinned ? "is-active" : ""}" data-pin="${link.id}" title="${link.pinned ? "Открепить" : "Закрепить"}" aria-label="${link.pinned ? "Открепить" : "Закрепить"}">
@@ -1550,6 +1651,35 @@ function bindEvents() {
     render();
   });
 
+  document.getElementById("breadcrumbs")?.addEventListener("click", (e) => {
+    const crumb = e.target.closest("[data-goto-folder]");
+    if (!crumb) return;
+    const id = crumb.dataset.gotoFolder || "";
+    state.filter = id ? `category:${id}` : "all";
+    render();
+  });
+
+  document.getElementById("folder-strip")?.addEventListener("click", (e) => {
+    const addSub = e.target.closest("[data-add-sub]");
+    const edit = e.target.closest("[data-edit-cat]");
+    const open = e.target.closest("[data-open-folder]");
+    if (addSub) {
+      e.stopPropagation();
+      openCategoryModal(null, addSub.dataset.addSub);
+      return;
+    }
+    if (edit) {
+      e.stopPropagation();
+      const cat = state.categories.find((c) => c.id === edit.dataset.editCat);
+      if (cat) openCategoryModal(cat);
+      return;
+    }
+    if (open) {
+      state.filter = `category:${open.dataset.openFolder}`;
+      render();
+    }
+  });
+
   document.getElementById("category-list").addEventListener("click", (e) => {
     const addSub = e.target.closest("[data-add-sub]");
     const edit = e.target.closest("[data-edit-cat]");
@@ -1573,7 +1703,7 @@ function bindEvents() {
     const item = e.target.closest("[data-category-id]");
     if (!item) return;
     const id = item.dataset.categoryId;
-    state.filter = state.filter === `category:${id}` ? "all" : `category:${id}`;
+    state.filter = `category:${id}`;
     render();
     closeSidebar();
   });

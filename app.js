@@ -413,13 +413,14 @@ function renderCategories() {
     list.innerHTML = roots
       .map((cat) => {
         const count = countLinksInCategory(cat.id);
+        const subCount = categoryChildren(cat.id).length;
         const active = state.filter === `category:${cat.id}`;
         return `
         <div class="cat-row-main">
           <button class="cat-item ${active ? "active" : ""}" data-category-id="${cat.id}" type="button">
             <span class="cat-dot" style="background:${cat.color}"></span>
             <span>${escapeHtml(cat.name)}</span>
-            <span class="nav-count">${count}</span>
+            <span class="nav-count">${subCount ? `${subCount} пап · ` : ""}${count}</span>
           </button>
           <div class="cat-actions always">
             <button type="button" class="mini-btn" data-add-sub="${cat.id}" title="Создать подпапку" aria-label="Создать подпапку">
@@ -492,7 +493,14 @@ function folderTilesHtml(folderId) {
               </svg>
             </span>
             <span class="folder-name">${escapeHtml(cat.name)}</span>
-            <span class="folder-count">${countLinksInCategory(cat.id)}</span>
+            <span class="folder-badges">
+              ${
+                categoryChildren(cat.id).length
+                  ? `<span class="badge badge-folders" title="Подпапки">${categoryChildren(cat.id).length} пап</span>`
+                  : ""
+              }
+              <span class="badge badge-links" title="Ссылки">${countLinksInCategory(cat.id)}</span>
+            </span>
           </button>
           <div class="folder-actions always">
             <button type="button" class="mini-btn" data-add-sub="${cat.id}" title="Создать подпапку" aria-label="Создать подпапку">+</button>

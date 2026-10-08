@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.11";
+const APP_BUILD = "2026.10.08.12";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -686,7 +686,19 @@ function renderGrid() {
                 <h3 class="card-title">${escapeHtml(link.title || "Без названия")}</h3>
               </a>
             </div>
-            ${link.note ? `<p class="card-note">${escapeHtml(link.note)}</p>` : ""}
+            <div class="card-note-block">
+              <div class="card-note-head">
+                <span class="card-note-label">Заметка</span>
+                <button type="button" class="note-btn" data-note="${link.id}">
+                  ${link.note ? "Изменить" : "Добавить"}
+                </button>
+              </div>
+              ${
+                link.note
+                  ? `<div class="card-note">${escapeHtml(link.note)}</div>`
+                  : `<div class="card-note empty">Описание к видео…</div>`
+              }
+            </div>
             ${
               (link.tags || []).length
                 ? `<div class="card-tags">${link.tags
@@ -825,6 +837,34 @@ function renderColorPicks(containerId, colors, selectedId, onPick) {
     if (!btn) return;
     onPick(btn.dataset.color);
   };
+}
+
+function openNoteModal(id) {
+  const link = state.links.find((l) => l.id === id);
+  if (!link) return;
+  state.editingLinkId = id;
+  const titleEl = document.getElementById("note-modal-title");
+  const input = document.getElementById("note-text");
+  const preview = document.getElementById("note-video-title");
+  if (titleEl) titleEl.textContent = "Заметка к видео";
+  if (preview) preview.textContent = link.title || "";
+  if (input) {
+    input.value = link.note || "";
+    setTimeout(() => input.focus(), 50);
+  }
+  openModal("modal-note");
+}
+
+function saveNoteFromModal() {
+  const link = state.links.find((l) => l.id === state.editingLinkId);
+  if (!link) return;
+  const input = document.getElementById("note-text");
+  link.note = (input?.value || "").trim();
+  link.updatedAt = nowIso();
+  saveState();
+  closeModal("modal-note");
+  render();
+  toast(link.note ? "Заметка сохранена" : "Заметка удалена");
 }
 
 function openLinkModal(link = null) {
@@ -1873,9 +1913,15 @@ function bindEvents() {
 
   // grid actions
   document.getElementById("grid").addEventListener("click", (e) => {
+    const note = e.target.closest("[data-note]");
     const pin = e.target.closest("[data-pin]");
     const edit = e.target.closest("[data-edit]");
     const del = e.target.closest("[data-delete]");
+    if (note) {
+      e.preventDefault();
+      openNoteModal(note.getAttribute("data-note"));
+      return;
+    }
     if (pin) togglePin(pin.dataset.pin);
     else if (edit) {
       const link = state.links.find((l) => l.id === edit.dataset.edit);
@@ -1990,6 +2036,18 @@ function bindEvents() {
   document.getElementById("btn-sync-pull").addEventListener("click", () => syncPull());
   document.getElementById("btn-connect-cloud").addEventListener("click", () => connectCloud());
   document.getElementById("btn-open-setup").addEventListener("click", openSyncModal);
+  document.getElementById("btn-save-note")?.addEventListener("click", saveNoteFromModal);
+  document.getElementById("btn-delete-note")?.addEventListener("click", () => {
+    const link = state.links.find((l) => l.id === state.editingLinkId);
+    if (link) {
+      link.note = "";
+      link.updatedAt = nowIso();
+      saveState();
+      render();
+    }
+    closeModal("modal-note");
+    toast("Заметка удалена");
+  });
   document.getElementById("btn-dismiss-setup")?.addEventListener("click", () => {
     localStorage.setItem("youtube-keep:setup-dismissed", "1");
     render();

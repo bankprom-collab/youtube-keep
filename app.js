@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.5";
+const APP_BUILD = "2026.10.08.6";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -39,6 +39,7 @@ const state = {
   selectedColor: "default",
   selectedCatColor: CAT_COLORS[0],
   pendingConfirm: null,
+  deletedCategoryIds: [],
   importItems: [],
   sync: {
     token: "",
@@ -124,12 +125,21 @@ function loadState() {
     }
     const data = parseJsonSafe(raw);
     state.links = (data.links || []).map(normalizeLink);
-    state.categories = (Array.isArray(data.categories) ? data.categories : []).map((c) => ({
-      id: c.id || uid(),
-      name: c.name || "Без названия",
-      color: c.color || CAT_COLORS[0],
-      parentId: c.parentId || null,
-    }));
+    state.deletedCategoryIds = Array.isArray(data.deletedCategoryIds)
+      ? data.deletedCategoryIds
+      : [];
+    const dead = new Set(state.deletedCategoryIds);
+    state.categories = (Array.isArray(data.categories) ? data.categories : [])
+      .filter((c) => c.id && !dead.has(c.id))
+      .map((c) => ({
+        id: c.id || uid(),
+        name: c.name || "Без названия",
+        color: c.color || CAT_COLORS[0],
+        parentId: c.parentId || null,
+      }));
+    state.links = state.links.map((l) =>
+      l.categoryId && dead.has(l.categoryId) ? { ...l, categoryId: null } : l
+    );
     if (!state.categories.length) seedDefaults();
     loadSyncSettings();
   } catch {
@@ -145,6 +155,7 @@ function saveState(options = {}) {
       version: 2,
       links: state.links,
       categories: state.categories,
+      deletedCategoryIds: state.deletedCategoryIds || [],
     })
   );
   if (options.sync !== false) scheduleAutoSync();
@@ -1003,23 +1014,35 @@ function deleteCategory(id) {
   const kids = categoryChildren(id);
   const count = countLinksInCategory(id);
   confirmAction(
-    "Удалить папку?",
-    count || kids.length
-      ? `«${cat?.name}»: вложенные папки станут на уровень выше, ссылки останутся без папки (${count}).`
-      : `«${cat?.name}» будет удалена.`,
+    "Удалить навсегда?",
+    `«${cat?.name}» удалится на всех устройствах.${
+      count || kids.length
+        ? ` Вложенные папки тоже удалятся, ссылки останутся без папки (${count}).`
+        : ""
+    }`,
     () => {
       const parent = cat?.parentId || null;
-      state.categories = state.categories.map((c) =>
-        c.parentId === id ? { ...c, parentId: parent } : c
-      );
+      // tombstone the whole subtree
+      const kill = categoryDescendantIds(id);
+      for (const cid of kill) {
+        if (!state.deletedCategoryIds.includes(cid)) {
+          state.deletedCategoryIds.push(cid);
+        }
+      }
+      state.categories = state.categories.filter((c) => !kill.has(c.id));
       state.links = state.links.map((l) =>
-        l.categoryId === id ? { ...l, categoryId: null } : l
+        l.categoryId && kill.has(l.categoryId) ? { ...l, categoryId: null } : l
       );
-      state.categories = state.categories.filter((c) => c.id !== id);
-      if (state.filter === `category:${id}`) state.filter = "all";
-      saveState();
+      if (state.filter.startsWith("category:")) {
+        const fid = state.filter.slice("category:".length);
+        if (kill.has(fid)) state.filter = "all";
+      }
+      saveState({ sync: false });
       render();
-      toast("Папка удалена");
+      toast("Направление удалено");
+      if (isCloudReady()) {
+        syncPush({ silent: true, skipStatus: true }).then(() => syncAll()).catch(() => {});
+      }
     }
   );
 }
@@ -1289,6 +1312,7 @@ function syncPayload() {
       updatedAt: nowIso(),
       links: state.links,
       categories: state.categories,
+      deletedCategoryIds: state.deletedCategoryIds || [],
     },
     null,
     2
@@ -1423,11 +1447,23 @@ async function syncPull(opts = {}) {
       if (!prev || (norm.updatedAt || "") > (prev.updatedAt || "")) map.set(norm.id, norm);
     }
     state.links = [...map.values()];
+    // Merge deletions first so removed folders stay removed
+    const dead = new Set([
+      ...(state.deletedCategoryIds || []),
+      ...(Array.isArray(data.deletedCategoryIds) ? data.deletedCategoryIds : []),
+    ]);
+    state.deletedCategoryIds = [...dead];
+    state.categories = state.categories.filter((c) => !dead.has(c.id));
+    state.links = state.links.map((l) =>
+      l.categoryId && dead.has(l.categoryId) ? { ...l, categoryId: null } : l
+    );
+
     // Merge categories by NAME (not id) to avoid "Вдохновение" x2
     const catByName = new Map();
     const alias = new Map(); // oldId -> canonicalId
     const putCat = (cat) => {
       if (!cat?.name) return;
+      if (dead.has(cat.id)) return;
       const key = `${cat.parentId || ""}::${String(cat.name).trim().toLowerCase()}`;
       const existing = catByName.get(key);
       if (!existing) {
@@ -1444,7 +1480,10 @@ async function syncPull(opts = {}) {
       }
     };
     for (const cat of state.categories) putCat(cat);
-    for (const cat of data.categories || []) putCat(cat);
+    for (const cat of data.categories || []) {
+      if (dead.has(cat.id)) continue;
+      putCat(cat);
+    }
     state.categories = [...catByName.values()];
     state.links = state.links.map((l) => ({
       ...l,

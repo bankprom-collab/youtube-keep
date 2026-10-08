@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.4";
+const APP_BUILD = "2026.10.08.5";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -405,11 +405,19 @@ function categoryPathLabel(id) {
 
 function renderCategories() {
   const list = document.getElementById("category-list");
-  const roots = categoryChildren(null).sort((a, b) =>
-    String(a.name || "").localeCompare(String(b.name || ""), "ru")
-  );
+  // dedupe by name at render time (merge leftovers from old syncs)
+  const seenNames = new Set();
+  const roots = categoryChildren(null)
+    .filter((cat) => {
+      const key = String(cat.name || "").trim().toLowerCase();
+      if (!key || seenNames.has(key)) return false;
+      seenNames.add(key);
+      return true;
+    })
+    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "ru"));
+
   if (!roots.length) {
-    list.innerHTML = `<div class="hint">Направлений пока нет</div>`;
+    list.innerHTML = `<div class="list-empty">Направлений пока нет</div>`;
   } else {
     list.innerHTML = roots
       .map((cat) => {
@@ -417,25 +425,20 @@ function renderCategories() {
         const subCount = categoryChildren(cat.id).length;
         const active = state.filter === `category:${cat.id}`;
         return `
-        <div class="cat-row-main">
-          <button class="cat-item ${active ? "active" : ""}" data-category-id="${cat.id}" type="button">
-            <span class="cat-dot" style="background:${cat.color}"></span>
-            <span>${escapeHtml(cat.name)}</span>
-            <span class="nav-count">${subCount ? `${subCount} пап · ` : ""}${count}</span>
+        <div class="dir-row ${active ? "is-active" : ""}">
+          <button class="dir-btn" data-category-id="${cat.id}" type="button" title="${escapeHtml(cat.name)}">
+            <span class="dir-dot" style="background:${cat.color}"></span>
+            <span class="dir-name">${escapeHtml(cat.name)}</span>
+            <span class="dir-counts">
+              ${subCount ? `<span class="dir-badge" title="Подпапки">${subCount}</span>` : ""}
+              <span class="dir-num" title="Ссылки">${count}</span>
+            </span>
           </button>
-          <div class="cat-actions always">
-            <button type="button" class="mini-btn" data-add-sub="${cat.id}" title="Создать подпапку" aria-label="Создать подпапку">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-            </button>
-            <button type="button" class="mini-btn" data-edit-cat="${cat.id}" title="Переименовать" aria-label="Переименовать">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-            </button>
-            <button type="button" class="mini-btn" data-del-cat="${cat.id}" title="Удалить" aria-label="Удалить">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
-            </button>
+          <div class="dir-actions">
+            <button type="button" class="dir-act" data-add-sub="${cat.id}" title="Подпапка" aria-label="Подпапка">+</button>
+            <button type="button" class="dir-act" data-edit-cat="${cat.id}" title="Переименовать" aria-label="Переименовать">…</button>
           </div>
-        </div>
-      `;
+        </div>`;
       })
       .join("");
   }
@@ -446,9 +449,9 @@ function renderCategories() {
   document.querySelectorAll(".nav-item").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.filter === state.filter);
   });
-  document.querySelectorAll(".cat-item").forEach((btn) => {
-    const id = btn.dataset.categoryId;
-    btn.classList.toggle("active", state.filter === `category:${id}`);
+  document.querySelectorAll(".dir-row").forEach((row) => {
+    const id = row.querySelector("[data-category-id]")?.dataset.categoryId;
+    row.classList.toggle("is-active", state.filter === `category:${id}`);
   });
 }
 
@@ -1713,12 +1716,14 @@ function bindEvents() {
       return;
     }
     if (edit) {
+      e.preventDefault();
       e.stopPropagation();
       const cat = state.categories.find((c) => c.id === edit.dataset.editCat);
       if (cat) openCategoryModal(cat);
       return;
     }
     if (del) {
+      e.preventDefault();
       e.stopPropagation();
       deleteCategory(del.dataset.delCat);
       return;

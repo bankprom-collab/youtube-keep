@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.9";
+const APP_BUILD = "2026.10.08.10";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -216,6 +216,9 @@ function saveSyncSettings() {
       lastSync: state.sync.lastSync,
     })
   );
+  if (state.sync.token && state.sync.gistId) {
+    localStorage.setItem("youtube-keep:setup-dismissed", "1");
+  }
 }
 
 function seedDefaults() {
@@ -1446,7 +1449,7 @@ async function syncPush(opts = {}) {
     state.sync.message = "Успешно отправлено в облако";
     saveSyncSettings();
     setSyncMessage(`Готово. Облако подключено (Gist ID: ${data.id}). Теперь откройте телефон.`);
-    toast("Облако подключено");
+    toast("Подключено. Код сохранён — больше не нужно вводить.");
     render();
     startCloudWatch();
     syncAll().catch(() => {});
@@ -1464,10 +1467,6 @@ async function syncPush(opts = {}) {
 
 async function syncPull(opts = {}) {
   if (!state.sync.token || !(state.sync.gistId || appConfig.gistId)) {
-    if (!opts.silent) {
-      setSyncMessage("Нужны token и Gist ID", true);
-      openModal("modal-sync");
-    }
     return;
   }
   if (!state.sync.gistId) state.sync.gistId = appConfig.gistId;
@@ -1991,6 +1990,11 @@ function bindEvents() {
   document.getElementById("btn-sync-pull").addEventListener("click", () => syncPull());
   document.getElementById("btn-connect-cloud").addEventListener("click", () => connectCloud());
   document.getElementById("btn-open-setup").addEventListener("click", openSyncModal);
+  document.getElementById("btn-dismiss-setup")?.addEventListener("click", () => {
+    localStorage.setItem("youtube-keep:setup-dismissed", "1");
+    render();
+    toast("Подсказка скрыта. Код можно добавить позже через шестерёнку.");
+  });
   document.getElementById("btn-sync-now").addEventListener("click", () => syncAll());
   document.getElementById("btn-copy-device-link")?.addEventListener("click", () => copyDeviceLink());
 

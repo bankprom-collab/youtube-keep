@@ -1693,3 +1693,12 @@ img {
     align-items: flex-start;
   }
 }
+
+
+.banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}

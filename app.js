@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.8";
+const APP_BUILD = "2026.10.08.9";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -472,6 +472,14 @@ function renderCategories() {
   });
 }
 
+function plural(n, one, few, many) {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return few;
+  return many;
+}
+
 function currentFolderId() {
   if (!state.filter.startsWith("category:")) return null;
   return state.filter.slice("category:".length) || null;
@@ -590,21 +598,62 @@ function renderGrid() {
     subEl.textContent = "Самое важное — под рукой";
     if (crumbEl) crumbEl.innerHTML = "";
     if (folderStrip) folderStrip.innerHTML = "";
+    const hero = document.getElementById("folder-hero");
+    if (hero) {
+      hero.hidden = true;
+      hero.innerHTML = "";
+    }
   } else if (folderId) {
     const cat = state.categories.find((c) => c.id === folderId);
+    const isSub = !!cat?.parentId;
+    const path = categoryPathLabel(folderId);
     titleEl.textContent = cat?.name || "Папка";
-    subEl.textContent = "Нажмите подпапку, чтобы зайти внутрь";
+    subEl.textContent = isSub ? "Содержимое подпапки ниже" : "Папка и её вложенные разделы ниже";
     if (crumbEl) crumbEl.innerHTML = breadcrumbHtml(folderId);
+
+    // big identity card: which folder you are in + YouTube cards underneath
+    const hero = document.getElementById("folder-hero");
+    if (hero) {
+      const linkCount = state.links.filter((l) => l.categoryId === folderId).length;
+      const subCount = categoryChildren(folderId).length;
+      hero.hidden = false;
+      hero.innerHTML = `
+        <div class="folder-hero-inner">
+          <div class="folder-hero-icon" style="--folder-color:${cat?.color || "#c2410c"}">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+              <path d="M3 7.5A2.5 2.5 0 015.5 5H9l2 2.5h7.5A2.5 2.5 0 0121 10v7.5a2.5 2.5 0 01-2.5 2.5h-13A2.5 2.5 0 013 17.5v-10z"/>
+            </svg>
+          </div>
+          <div class="folder-hero-text">
+            <div class="folder-hero-kicker">${isSub ? "Подпапка" : "Папка"} · ${escapeHtml(path)}</div>
+            <h2 class="folder-hero-title">${escapeHtml(cat?.name || "Папка")}</h2>
+            <div class="folder-hero-meta">
+              <span>${linkCount} ${plural(linkCount, "ссылка", "ссылки", "ссылок")}</span>
+              ${subCount ? `<span class="dot-sep">·</span><span>${subCount} ${plural(subCount, "подпапка", "подпапки", "подпапок")}</span>` : ""}
+            </div>
+          </div>
+          <div class="folder-hero-actions">
+            <button type="button" class="secondary-btn" data-add-sub="${folderId}">+ Подпапка</button>
+            <button type="button" class="secondary-btn" data-edit-cat="${folderId}">Переименовать</button>
+          </div>
+        </div>`;
+    }
+
     if (folderStrip) {
-      folderStrip.innerHTML =
-        `<div class="folder-strip-head">
-          <button type="button" class="primary-btn" id="btn-new-subfolder" data-add-sub="${folderId}">+ Подпапка</button>
-        </div>` + folderTilesHtml(folderId);
+      const kids = folderTilesHtml(folderId);
+      folderStrip.innerHTML = kids
+        ? `<div class="folder-strip-label">Вложенные папки</div>` + kids
+        : "";
     }
   } else {
     titleEl.textContent = "Все ссылки";
     subEl.textContent = "Выберите направление слева или папку ниже";
     if (crumbEl) crumbEl.innerHTML = "";
+    const hero = document.getElementById("folder-hero");
+    if (hero) {
+      hero.hidden = true;
+      hero.innerHTML = "";
+    }
     if (folderStrip) folderStrip.innerHTML = folderTilesHtml(null);
   }
 
@@ -1944,6 +1993,21 @@ function bindEvents() {
   document.getElementById("btn-open-setup").addEventListener("click", openSyncModal);
   document.getElementById("btn-sync-now").addEventListener("click", () => syncAll());
   document.getElementById("btn-copy-device-link")?.addEventListener("click", () => copyDeviceLink());
+
+  document.getElementById("folder-hero")?.addEventListener("click", (e) => {
+    const addSub = e.target.closest("[data-add-sub]");
+    const edit = e.target.closest("[data-edit-cat]");
+    if (addSub) {
+      e.preventDefault();
+      openCategoryModal(null, addSub.getAttribute("data-add-sub"));
+      return;
+    }
+    if (edit) {
+      e.preventDefault();
+      const cat = state.categories.find((c) => c.id === edit.dataset.editCat);
+      if (cat) openCategoryModal(cat);
+    }
+  });
 
   // mobile sidebar
   document.getElementById("btn-menu").addEventListener("click", openSidebar);

@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.13";
+const APP_BUILD = "2026.10.08.14";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -40,6 +40,14 @@ const state = {
   selectedCatColor: CAT_COLORS[0],
   pendingConfirm: null,
   deletedCategoryIds: [],
+  noteFolders: [],
+  notes: [],
+  deletedNoteFolderIds: [],
+  deletedNoteIds: [],
+  editingNoteId: null,
+  editingNoteFolderId: null,
+  editingNoteFolderParentId: null,
+  notesOpen: true,
   importItems: [],
   sync: {
     token: "",
@@ -128,6 +136,17 @@ function loadState() {
     state.deletedCategoryIds = Array.isArray(data.deletedCategoryIds)
       ? data.deletedCategoryIds
       : [];
+    state.noteFolders = Array.isArray(data.noteFolders) ? data.noteFolders : [];
+    state.notes = Array.isArray(data.notes) ? data.notes : [];
+    state.deletedNoteFolderIds = Array.isArray(data.deletedNoteFolderIds)
+      ? data.deletedNoteFolderIds
+      : [];
+    state.deletedNoteIds = Array.isArray(data.deletedNoteIds) ? data.deletedNoteIds : [];
+    // purge deleted notes/folders
+    const deadF = new Set(state.deletedNoteFolderIds);
+    const deadN = new Set(state.deletedNoteIds);
+    state.noteFolders = (state.noteFolders || []).filter((f) => f.id && !deadF.has(f.id));
+    state.notes = (state.notes || []).filter((n) => n.id && !deadN.has(n.id));
     const dead = new Set(state.deletedCategoryIds);
     state.categories = (Array.isArray(data.categories) ? data.categories : [])
       .filter((c) => c.id && !dead.has(c.id))
@@ -156,6 +175,14 @@ function saveState(options = {}) {
       links: state.links,
       categories: state.categories,
       deletedCategoryIds: state.deletedCategoryIds || [],
+      noteFolders: state.noteFolders || [],
+      notes: state.notes || [],
+      deletedNoteFolderIds: state.deletedNoteFolderIds || [],
+      deletedNoteIds: state.deletedNoteIds || [],
+      noteFolders: state.noteFolders || [],
+      notes: state.notes || [],
+      deletedNoteFolderIds: state.deletedNoteFolderIds || [],
+      deletedNoteIds: state.deletedNoteIds || [],
     })
   );
   if (options.sync !== false) scheduleAutoSync();
@@ -483,6 +510,42 @@ function plural(n, one, few, many) {
   return many;
 }
 
+function noteFolderChildren(parentId) {
+  return (state.noteFolders || []).filter(
+    (f) => (f.parentId || null) === (parentId || null)
+  );
+}
+
+function notesInFolder(folderId) {
+  return (state.notes || []).filter((n) => (n.folderId || null) === (folderId || null));
+}
+
+function noteFolderDescendantIds(id) {
+  const out = new Set([id || null]);
+  const walk = (pid) => {
+    for (const f of state.noteFolders || []) {
+      if ((f.parentId || null) === (pid || null) && !out.has(f.id)) {
+        out.add(f.id);
+        walk(f.id);
+      }
+    }
+  };
+  walk(id);
+  return out;
+}
+
+function countNotesInFolder(id) {
+  const ids = noteFolderDescendantIds(id);
+  return (state.notes || []).filter((n) => n.folderId && ids.has(n.folderId)).length;
+}
+
+function currentNotesFolderId() {
+  if (!state.filter.startsWith("notes:")) return null;
+  const rest = state.filter.slice("notes:".length);
+  if (!rest || rest === "all") return null;
+  return rest;
+}
+
 function currentFolderId() {
   if (!state.filter.startsWith("category:")) return null;
   return state.filter.slice("category:".length) || null;
@@ -546,7 +609,232 @@ function folderTilesHtml(folderId) {
   `;
 }
 
+function renderNotesSidebar() {
+  const list = document.getElementById("notes-list");
+  const countEl = document.getElementById("count-notes");
+  if (countEl) countEl.textContent = String((state.notes || []).length);
+
+  const parents = [null, currentNotesFolderId()].filter(
+    (v, i, a) => a.indexOf(v) === i
+  );
+  // show roots when on notes:all or root folder; show children when inside folder
+  const pid = currentNotesFolderId();
+  const items = noteFolderChildren(pid).sort((a, b) =>
+    String(a.name || "").localeCompare(String(b.name || ""), "ru")
+  );
+
+  if (!list) return;
+  if (!items.length) {
+    list.innerHTML = `<div class="list-empty">Папок заметок нет</div>`;
+    return;
+  }
+  list.innerHTML = items
+    .map((f) => {
+      const active = state.filter === `notes:${f.id}`;
+      return `
+      <div class="dir-row ${active ? "is-active" : ""}">
+        <button class="dir-btn" data-note-folder="${f.id}" type="button">
+          <span class="dir-gear" aria-hidden="true">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M5 4h11l3 3v13H5V4z"/><path d="M8 10h8M8 14h6"/>
+            </svg>
+          </span>
+          <span class="dir-name">${escapeHtml(f.name)}</span>
+          <span class="dir-counts">
+            <span class="dir-num">${countNotesInFolder(f.id)}</span>
+          </span>
+        </button>
+        <div class="dir-actions">
+          <button type="button" class="dir-act" data-note-folder-add="${f.id}" title="Подпапка" aria-label="Подпапка">+</button>
+          <button type="button" class="dir-act" data-note-folder-edit="${f.id}" title="Переименовать" aria-label="Переименовать">…</button>
+        </div>
+      </div>`;
+    })
+    .join("");
+}
+
+function renderNotesView() {
+  const hero = document.getElementById("folder-hero");
+  const strip = document.getElementById("folder-strip");
+  const grid = document.getElementById("grid");
+  const empty = document.getElementById("empty");
+  const titleEl = document.getElementById("page-title");
+  const subEl = document.getElementById("page-sub");
+  const crumbEl = document.getElementById("breadcrumbs");
+
+  const folderId = currentNotesFolderId();
+  const folder = folderId
+    ? (state.noteFolders || []).find((f) => f.id === folderId)
+    : null;
+
+  titleEl.textContent = folder ? folder.name : "Все заметки";
+  subEl.textContent = folder
+    ? "Заметки и подпапки этой папки"
+    : "Личные заметки отдельно от видео";
+  if (crumbEl) {
+    if (!folderId) crumbEl.innerHTML = "";
+    else {
+      const parts = [];
+      let cur = folder;
+      const seen = new Set();
+      while (cur && !seen.has(cur.id)) {
+        seen.add(cur.id);
+        parts.unshift(cur);
+        cur = cur.parentId
+          ? (state.noteFolders || []).find((f) => f.id === cur.parentId)
+          : null;
+      }
+      crumbEl.innerHTML =
+        `<button type="button" class="crumb" data-note-goto="">Заметки</button>` +
+        parts
+          .map(
+            (p) =>
+              `<span class="crumb-sep">/</span><button type="button" class="crumb" data-note-goto="${p.id}">${escapeHtml(p.name)}</button>`
+          )
+          .join("");
+    }
+  }
+
+  if (hero) {
+    if (folderId && folder) {
+      hero.hidden = false;
+      hero.innerHTML = `
+        <div class="folder-hero-inner">
+          <div class="folder-hero-icon" style="--folder-color:${folder.color || "#c2410c"}">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+              <path d="M5 4h11l3 3v13H5V4z"/><path d="M8 10h8M8 14h6"/>
+            </svg>
+          </div>
+          <div class="folder-hero-text">
+            <div class="folder-hero-kicker">Папка заметок</div>
+            <h2 class="folder-hero-title">${escapeHtml(folder.name)}</h2>
+            <div class="folder-hero-meta">
+              <span>${notesInFolder(folderId).length} заметок</span>
+            </div>
+          </div>
+          <div class="folder-hero-actions">
+            <button type="button" class="secondary-btn" data-note-folder-add="${folderId}">+ Подпапка</button>
+            <button type="button" class="primary-btn" data-note-add="${folderId}">+ Заметка</button>
+          </div>
+        </div>`;
+    } else {
+      hero.hidden = false;
+      hero.innerHTML = `
+        <div class="folder-hero-inner">
+          <div class="folder-hero-icon" style="--folder-color:#c2410c">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+              <path d="M5 4h11l3 3v13H5V4z"/><path d="M8 10h8M8 14h6"/>
+            </svg>
+          </div>
+          <div class="folder-hero-text">
+            <div class="folder-hero-kicker">Заметки</div>
+            <h2 class="folder-hero-title">Библиотека заметок</h2>
+            <div class="folder-hero-meta"><span>${(state.notes || []).length} заметок</span></div>
+          </div>
+          <div class="folder-hero-actions">
+            <button type="button" class="secondary-btn" data-note-folder-add="">+ Папка</button>
+            <button type="button" class="primary-btn" data-note-add="">+ Заметка</button>
+          </div>
+        </div>`;
+    }
+  }
+
+  // subfolders strip
+  const kids = noteFolderChildren(folderId).sort((a, b) =>
+    String(a.name || "").localeCompare(String(b.name || ""), "ru")
+  );
+  if (strip) {
+    if (!kids.length) strip.innerHTML = "";
+    else {
+      strip.innerHTML =
+        `<div class="folder-strip-label">Вложенные папки</div>` +
+        kids
+          .map(
+            (cat) => `
+        <div class="folder-tile-wrap" style="--folder-color:${cat.color || "#c2410c"}">
+          <button type="button" class="folder-tile" data-note-folder="${cat.id}">
+            <span class="folder-icon" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M5 4h11l3 3v13H5V4z"/><path d="M8 10h8M8 14h6"/>
+              </svg>
+            </span>
+            <span class="folder-name">${escapeHtml(cat.name)}</span>
+            <span class="folder-badges">
+              ${noteFolderChildren(cat.id).length ? `<span class="badge badge-folders">${noteFolderChildren(cat.id).length} пап</span>` : ""}
+              <span class="badge badge-links">${notesInFolder(cat.id).length}</span>
+            </span>
+          </button>
+          <div class="folder-actions always">
+            <button type="button" class="mini-btn" data-note-folder-add="${cat.id}" title="Подпапка">+</button>
+            <button type="button" class="mini-btn" data-note-folder-edit="${cat.id}" title="Переименовать">✎</button>
+            <button type="button" class="mini-btn" data-note-folder-del="${cat.id}" title="Удалить">×</button>
+          </div>
+        </div>`
+          )
+          .join("");
+    }
+  }
+
+  const list = notesInFolder(folderId)
+    .slice()
+    .sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
+
+  if (!list.length && !kids.length) {
+    if (grid) grid.innerHTML = "";
+    if (empty) {
+      empty.hidden = false;
+      empty.querySelector(".empty-title").textContent = "Заметок пока нет";
+      empty.querySelector(".empty-text").textContent =
+        "Создайте папку или первую заметку.";
+      const btn = empty.querySelector("#btn-empty-add");
+      if (btn) {
+        btn.textContent = "Добавить заметку";
+        btn.setAttribute("data-note-add", folderId || "");
+        btn.removeAttribute("id");
+      }
+    }
+    return;
+  }
+  if (empty) empty.hidden = true;
+
+  if (grid) {
+    grid.innerHTML = list
+      .map((n) => {
+        const preview = String(n.text || "")
+          .replace(/\s+/g, " ")
+          .slice(0, 140);
+        return `
+        <article class="card note-card" data-note-id="${n.id}">
+          <div class="card-body">
+            <div class="card-top">
+              <h3 class="card-title">${escapeHtml(n.title || "Заметка")}</h3>
+            </div>
+            <p class="card-note">${escapeHtml(preview)}${preview.length >= 140 ? "…" : ""}</p>
+            <div class="card-meta">
+              <span class="chip">${n.updatedAt ? new Date(n.updatedAt).toLocaleDateString("ru-RU") : ""}</span>
+              <div class="card-actions">
+                <button class="icon-btn" data-note-open="${n.id}" title="Открыть" aria-label="Открыть">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4h11l3 3v13H5V4z"/></svg>
+                </button>
+                <button class="icon-btn danger" data-note-del="${n.id}" title="Удалить" aria-label="Удалить">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </article>`;
+      })
+      .join("");
+  }
+}
+
 function renderGrid() {
+  if (state.filter.startsWith("notes:")) {
+    renderNotesSidebar();
+    renderNotesView();
+    return;
+  }
+  renderNotesSidebar();
   const grid = document.getElementById("grid");
   const empty = document.getElementById("empty");
   const folderId = currentFolderId();
@@ -832,6 +1120,45 @@ function renderColorPicks(containerId, colors, selectedId, onPick) {
     if (!btn) return;
     onPick(btn.dataset.color);
   };
+}
+
+function openNoteStoreModal(noteId = null, folderId = null) {
+  state.editingNoteId = noteId;
+  const note = noteId ? (state.notes || []).find((n) => n.id === noteId) : null;
+  document.getElementById("note-store-title").textContent = note ? "Редактировать заметку" : "Новая заметка";
+  document.getElementById("note-store-name").value = note?.title || "";
+  document.getElementById("note-store-text").value = note?.text || "";
+  const del = document.getElementById("btn-note-store-delete");
+  if (del) del.hidden = !note;
+  state.editingNoteFolderParentId = folderId !== null ? folderId : note?.folderId || currentNotesFolderId();
+  openModal("modal-note-store");
+  setTimeout(() => document.getElementById("note-store-name")?.focus(), 50);
+}
+
+function openNoteFolderModal(folderId = null, parentId = null) {
+  const folder = folderId
+    ? (state.noteFolders || []).find((f) => f.id === folderId)
+    : null;
+  state.editingNoteFolderId = folderId;
+  state.editingNoteFolderParentId = folder
+    ? folder.parentId || null
+    : parentId !== null
+      ? parentId
+      : currentNotesFolderId();
+  document.getElementById("note-folder-title").textContent = folder
+    ? "Редактировать папку"
+    : "Новая папка заметок";
+  document.getElementById("note-folder-name").value = folder?.name || "";
+  const parentLabel = document.getElementById("note-folder-parent");
+  if (parentLabel) {
+    parentLabel.textContent = state.editingNoteFolderParentId
+      ? "Вложенная папка"
+      : "Верхний уровень";
+  }
+  const del = document.getElementById("btn-note-folder-delete");
+  if (del) del.hidden = !folder;
+  openModal("modal-note-folder");
+  setTimeout(() => document.getElementById("note-folder-name")?.focus(), 50);
 }
 
 function openNoteModal(id) {
@@ -1588,6 +1915,53 @@ async function syncPull(opts = {}) {
       l.categoryId && !validIds.has(l.categoryId) ? { ...l, categoryId: null } : l
     );
 
+    // Notes & note folders merge
+    {
+      const deadF = new Set([
+        ...(state.deletedNoteFolderIds || []),
+        ...(data.deletedNoteFolderIds || []),
+      ]);
+      const deadN = new Set([
+        ...(state.deletedNoteIds || []),
+        ...(data.deletedNoteIds || []),
+      ]);
+      state.deletedNoteFolderIds = [...deadF];
+      state.deletedNoteIds = [...deadN];
+
+      const fmap = new Map();
+      for (const f of [...(state.noteFolders || []), ...(data.noteFolders || [])]) {
+        if (!f?.id || deadF.has(f.id)) continue;
+        const prev = fmap.get(f.id);
+        if (!prev || (f.updatedAt || "") >= (prev.updatedAt || "")) {
+          fmap.set(f.id, {
+            id: f.id,
+            name: f.name || "Папка",
+            parentId: f.parentId || null,
+            color: f.color || "#c2410c",
+            updatedAt: f.updatedAt || "",
+          });
+        }
+      }
+      state.noteFolders = [...fmap.values()];
+
+      const nmap = new Map();
+      for (const n of [...(state.notes || []), ...(data.notes || [])]) {
+        if (!n?.id || deadN.has(n.id)) continue;
+        const prev = nmap.get(n.id);
+        if (!prev || (n.updatedAt || "") >= (prev.updatedAt || "")) {
+          nmap.set(n.id, {
+            id: n.id,
+            folderId: n.folderId || null,
+            title: n.title || "Заметка",
+            text: n.text || "",
+            updatedAt: n.updatedAt || "",
+            createdAt: n.createdAt || "",
+          });
+        }
+      }
+      state.notes = [...nmap.values()];
+    }
+
     saveState({ sync: false });
     state.sync.lastSync = nowIso();
     state.sync.status = "ok";
@@ -1993,6 +2367,117 @@ function bindEvents() {
   });
 
   // tags filter
+  document.getElementById("notes-list")?.addEventListener("click", (e) => {
+    const add = e.target.closest("[data-note-folder-add]");
+    const edit = e.target.closest("[data-note-folder-edit]");
+    const open = e.target.closest("[data-note-folder]");
+    if (add) {
+      e.preventDefault();
+      openNoteFolderModal(null, add.getAttribute("data-note-folder-add") || null);
+      return;
+    }
+    if (edit) {
+      e.preventDefault();
+      openNoteFolderModal(edit.getAttribute("data-note-folder-edit"));
+      return;
+    }
+    if (open) {
+      state.filter = `notes:${open.getAttribute("data-note-folder")}`;
+      render();
+      closeSidebar();
+    }
+  });
+
+  document.getElementById("nav-notes")?.addEventListener("click", () => {
+    state.filter = "notes:all";
+    render();
+    closeSidebar();
+  });
+
+  // notes main area
+  document.getElementById("folder-hero")?.addEventListener("click", (e) => {
+    const addNote = e.target.closest("[data-note-add]");
+    const addFolder = e.target.closest("[data-note-folder-add]");
+    const editFolder = e.target.closest("[data-note-folder-edit]");
+    if (addNote) {
+      e.preventDefault();
+      openNoteStoreModal(null, addNote.getAttribute("data-note-add") || null);
+      return;
+    }
+    if (addFolder) {
+      e.preventDefault();
+      openNoteFolderModal(null, addFolder.getAttribute("data-note-folder-add") || null);
+      return;
+    }
+    if (editFolder) {
+      e.preventDefault();
+      openNoteFolderModal(editFolder.getAttribute("data-note-folder-edit"));
+    }
+  });
+
+  document.getElementById("folder-strip")?.addEventListener("click", (e) => {
+    const add = e.target.closest("[data-note-folder-add]");
+    const edit = e.target.closest("[data-note-folder-edit]");
+    const del = e.target.closest("[data-note-folder-del]");
+    const open = e.target.closest("[data-note-folder]");
+    if (add) {
+      e.preventDefault();
+      e.stopPropagation();
+      openNoteFolderModal(null, add.getAttribute("data-note-folder-add") || null);
+      return;
+    }
+    if (edit) {
+      e.preventDefault();
+      e.stopPropagation();
+      openNoteFolderModal(edit.getAttribute("data-note-folder-edit"));
+      return;
+    }
+    if (del) {
+      e.preventDefault();
+      e.stopPropagation();
+      openNoteFolderModal(del.getAttribute("data-note-folder-del"));
+      return;
+    }
+    if (open) {
+      state.filter = `notes:${open.getAttribute("data-note-folder")}`;
+      render();
+    }
+  });
+
+  document.getElementById("breadcrumbs")?.addEventListener("click", (e) => {
+    const goto = e.target.closest("[data-note-goto]");
+    if (goto) {
+      const id = goto.getAttribute("data-note-goto");
+      state.filter = id ? `notes:${id}` : "notes:all";
+      render();
+    }
+  });
+
+  document.getElementById("grid")?.addEventListener("click", (e) => {
+    const open = e.target.closest("[data-note-open]");
+    const del = e.target.closest("[data-note-del]");
+    const addNote = e.target.closest("[data-note-add]");
+    if (addNote && state.filter.startsWith("notes:")) {
+      e.preventDefault();
+      openNoteStoreModal(null, addNote.getAttribute("data-note-add") || null);
+      return;
+    }
+    if (open) {
+      e.preventDefault();
+      openNoteStoreModal(open.getAttribute("data-note-open"));
+      return;
+    }
+    if (del && state.filter.startsWith("notes:")) {
+      e.preventDefault();
+      const id = del.getAttribute("data-note-del");
+      state.deletedNoteIds.push(id);
+      state.notes = state.notes.filter((n) => n.id !== id);
+      saveState();
+      render();
+      toast("Заметка удалена");
+    }
+  });
+
   document.getElementById("tag-list").addEventListener("click", (e) => {
     const chip = e.target.closest("[data-tag]");
     if (!chip) return;
@@ -2096,6 +2581,99 @@ function bindEvents() {
   });
   document.getElementById("btn-sync-now").addEventListener("click", () => syncAll());
   document.getElementById("btn-copy-device-link")?.addEventListener("click", () => copyDeviceLink());
+  document.getElementById("btn-add-note-folder")?.addEventListener("click", () => openNoteFolderModal(null, currentNotesFolderId()));
+
+  document.getElementById("form-note-store")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const title = document.getElementById("note-store-name").value.trim() || "Заметка";
+    const text = document.getElementById("note-store-text").value;
+    const folderId = state.editingNoteFolderParentId || null;
+    if (state.editingNoteId) {
+      const n = state.notes.find((x) => x.id === state.editingNoteId);
+      if (n) {
+        n.title = title;
+        n.text = text;
+        n.folderId = folderId;
+        n.updatedAt = nowIso();
+      }
+      toast("Заметка обновлена");
+    } else {
+      state.notes.unshift({
+        id: uid(),
+        folderId,
+        title,
+        text,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+      });
+      toast("Заметка создана");
+    }
+    saveState();
+    closeModal("modal-note-store");
+    render();
+  });
+
+  document.getElementById("btn-note-store-delete")?.addEventListener("click", () => {
+    if (!state.editingNoteId) return;
+    state.deletedNoteIds.push(state.editingNoteId);
+    state.notes = state.notes.filter((n) => n.id !== state.editingNoteId);
+    saveState();
+    closeModal("modal-note-store");
+    render();
+    toast("Заметка удалена");
+  });
+
+  document.getElementById("form-note-folder")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = document.getElementById("note-folder-name").value.trim();
+    if (!name) return;
+    if (state.editingNoteFolderId) {
+      const f = state.noteFolders.find((x) => x.id === state.editingNoteFolderId);
+      if (f) {
+        f.name = name;
+        f.updatedAt = nowIso();
+      }
+      toast("Папка обновлена");
+    } else {
+      state.noteFolders.push({
+        id: uid(),
+        name,
+        parentId: state.editingNoteFolderParentId || null,
+        color: "#c2410c",
+        updatedAt: nowIso(),
+      });
+      toast("Папка создана");
+    }
+    saveState();
+    closeModal("modal-note-folder");
+    render();
+  });
+
+  document.getElementById("btn-note-folder-delete")?.addEventListener("click", () => {
+    const id = state.editingNoteFolderId;
+    if (!id) return;
+    const kill = noteFolderDescendantIds(id);
+    for (const fid of kill) {
+      if (fid && !state.deletedNoteFolderIds.includes(fid)) {
+        state.deletedNoteFolderIds.push(fid);
+      }
+    }
+    for (const n of state.notes || []) {
+      if (n.folderId && kill.has(n.folderId) && !state.deletedNoteIds.includes(n.id)) {
+        state.deletedNoteIds.push(n.id);
+      }
+    }
+    state.noteFolders = (state.noteFolders || []).filter((f) => !kill.has(f.id));
+    state.notes = (state.notes || []).filter((n) => !(n.folderId && kill.has(n.folderId)));
+    if (state.filter.startsWith("notes:")) {
+      const fid = state.filter.slice("notes:".length);
+      if (kill.has(fid)) state.filter = "notes:all";
+    }
+    saveState();
+    closeModal("modal-note-folder");
+    render();
+    toast("Папка заметок удалена");
+  });
 
   document.getElementById("folder-hero")?.addEventListener("click", (e) => {
     const addSub = e.target.closest("[data-add-sub]");

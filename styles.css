@@ -1872,3 +1872,8 @@ img {
   height: 34px;
   font-size: 0.82rem;
 }
+
+
+.note-card .card-body {
+  gap: 12px;
+}

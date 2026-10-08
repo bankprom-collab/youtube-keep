@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.6";
+const APP_BUILD = "2026.10.08.7";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -438,7 +438,12 @@ function renderCategories() {
         return `
         <div class="dir-row ${active ? "is-active" : ""}">
           <button class="dir-btn" data-category-id="${cat.id}" type="button" title="${escapeHtml(cat.name)}">
-            <span class="dir-dot" style="background:${cat.color}"></span>
+            <span class="dir-gear" aria-hidden="true">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M12 2.5l1.1 2.2 2.4-.4 1.1 2.2 2.2 1.1-.4 2.4 2.2 1.1-2.2 1.1.4 2.4-2.2 1.1-1.1 2.2-2.4-.4L12 21.5l-1.1-2.2-2.4.4-1.1-2.2-2.2-1.1.4-2.4L3.4 12l2.2-1.1-.4-2.4 2.2-1.1 1.1-2.2 2.4.4L12 2.5z"/>
+              </svg>
+            </span>
             <span class="dir-name">${escapeHtml(cat.name)}</span>
             <span class="dir-counts">
               ${subCount ? `<span class="dir-badge" title="Подпапки">${subCount}</span>` : ""}

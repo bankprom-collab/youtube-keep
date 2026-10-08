@@ -287,11 +287,20 @@ img {
   font-weight: 650;
 }
 
-.dir-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
+.dir-gear {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
   flex-shrink: 0;
+  color: var(--ink-3);
+  transition: color 150ms var(--ease), transform 200ms var(--ease);
+}
+
+.dir-row:hover .dir-gear,
+.dir-row.is-active .dir-gear {
+  color: var(--accent);
+  transform: rotate(25deg);
 }
 
 .dir-name {

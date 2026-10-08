@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.12";
+const APP_BUILD = "2026.10.08.13";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -686,31 +686,26 @@ function renderGrid() {
                 <h3 class="card-title">${escapeHtml(link.title || "Без названия")}</h3>
               </a>
             </div>
-            <div class="card-note-block">
-              <div class="card-note-head">
-                <span class="card-note-label">Заметка</span>
-                <button type="button" class="note-btn" data-note="${link.id}">
-                  ${link.note ? "Изменить" : "Добавить"}
-                </button>
+            <div class="note-fold" data-note-fold="${link.id}">
+              <button type="button" class="note-fold-head" data-note="${link.id}" aria-expanded="false">
+                <span class="note-fold-icon" aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                </span>
+                <span class="note-fold-label">Заметка</span>
+                <span class="note-fold-preview">${link.note ? escapeHtml(String(link.note).replace(/\s+/g, " ").slice(0, 64) + (String(link.note).length > 64 ? "…" : "")) : "добавить текст"}</span>
+              </button>
+              <div class="note-fold-body" hidden>
+                <textarea class="note-fold-input" rows="4" placeholder="О чём видео, мысли, что запомнить…">${escapeHtml(link.note || "")}</textarea>
+                <div class="note-fold-actions">
+                  <button type="button" class="secondary-btn note-save" data-note-save="${link.id}">Готово</button>
+                  ${
+                    link.note
+                      ? `<button type="button" class="ghost-btn note-clear" data-note-clear="${link.id}">Очистить</button>`
+                      : ""
+                  }
+                </div>
               </div>
-              ${
-                link.note
-                  ? `<div class="card-note">${escapeHtml(link.note)}</div>`
-                  : `<div class="card-note empty">Описание к видео…</div>`
-              }
             </div>
-            ${
-              (link.tags || []).length
-                ? `<div class="card-tags">${link.tags
-                    .map(
-                      (t) =>
-                        `<button type="button" class="tag-chip tag-chip-card" data-tag="${escapeHtml(
-                          String(t).toLowerCase()
-                        )}">#${escapeHtml(t)}</button>`
-                    )
-                    .join("")}</div>`
-                : ""
-            }
             <div class="card-meta">
               ${
                 cat
@@ -1911,17 +1906,63 @@ function bindEvents() {
     }
   });
 
-  // grid actions
+  // grid actions (notes fold + card actions)
   document.getElementById("grid").addEventListener("click", (e) => {
-    const note = e.target.closest("[data-note]");
+    const foldHead = e.target.closest("[data-note]");
+    const saveBtn = e.target.closest("[data-note-save]");
+    const clearBtn = e.target.closest("[data-note-clear]");
+    if (saveBtn) {
+      e.preventDefault();
+      const id = saveBtn.getAttribute("data-note-save");
+      const fold = saveBtn.closest("[data-note-fold]");
+      const ta = fold?.querySelector(".note-fold-input");
+      const link = state.links.find((l) => l.id === id);
+      if (link && ta) {
+        link.note = ta.value.trim();
+        link.updatedAt = nowIso();
+        saveState();
+        render();
+        toast(link.note ? "Заметка сохранена" : "Заметка пустая");
+      }
+      return;
+    }
+    if (clearBtn) {
+      e.preventDefault();
+      const id = clearBtn.getAttribute("data-note-clear");
+      const link = state.links.find((l) => l.id === id);
+      if (link) {
+        link.note = "";
+        link.updatedAt = nowIso();
+        saveState();
+        render();
+        toast("Заметка очищена");
+      }
+      return;
+    }
+    if (foldHead) {
+      e.preventDefault();
+      const fold = foldHead.closest("[data-note-fold]");
+      const body = fold?.querySelector(".note-fold-body");
+      const open = body && !body.hidden;
+      document.querySelectorAll(".note-fold.is-open").forEach((el) => {
+        el.classList.remove("is-open");
+        const b = el.querySelector(".note-fold-body");
+        const h = el.querySelector(".note-fold-head");
+        if (b) b.hidden = true;
+        if (h) h.setAttribute("aria-expanded", "false");
+      });
+      if (body && !open) {
+        fold.classList.add("is-open");
+        body.hidden = false;
+        foldHead.setAttribute("aria-expanded", "true");
+        body.querySelector(".note-fold-input")?.focus();
+      }
+      return;
+    }
+
     const pin = e.target.closest("[data-pin]");
     const edit = e.target.closest("[data-edit]");
     const del = e.target.closest("[data-delete]");
-    if (note) {
-      e.preventDefault();
-      openNoteModal(note.getAttribute("data-note"));
-      return;
-    }
     if (pin) togglePin(pin.dataset.pin);
     else if (edit) {
       const link = state.links.find((l) => l.id === edit.dataset.edit);

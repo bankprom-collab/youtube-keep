@@ -1771,3 +1771,104 @@ img {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+
+/* Collapsible note */
+.note-fold {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+  overflow: hidden;
+}
+
+.note-fold-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 0.86rem;
+}
+
+.note-fold.is-open .note-fold-head {
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--line);
+}
+
+.note-fold-icon {
+  display: grid;
+  place-items: center;
+  color: var(--ink-3);
+  transition: transform 180ms var(--ease);
+}
+
+.note-fold.is-open .note-fold-icon {
+  transform: rotate(180deg);
+  color: var(--accent);
+}
+
+.note-fold-label {
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  flex-shrink: 0;
+}
+
+.note-fold-preview {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-2);
+}
+
+.note-fold.is-open .note-fold-preview {
+  color: var(--ink-3);
+  font-size: 0.8rem;
+}
+
+.note-fold-body {
+  padding: 12px;
+  background: var(--bg-elevated);
+}
+
+.note-fold-body[hidden] {
+  display: none !important;
+}
+
+.note-fold-input {
+  width: 100%;
+  min-height: 96px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--bg);
+  resize: vertical;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  outline: none;
+}
+
+.note-fold-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.note-fold-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.note-fold-actions .primary-btn,
+.note-fold-actions .secondary-btn {
+  height: 34px;
+  font-size: 0.82rem;
+}

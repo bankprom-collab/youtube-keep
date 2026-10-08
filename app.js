@@ -1,5 +1,6 @@
 /* YouTube Keep — app logic */
 
+const APP_BUILD = "2026.10.08.4";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -686,6 +687,8 @@ function parseTagsInput(value) {
 }
 
 function render() {
+  const buildEl = document.getElementById("build-label");
+  if (buildEl) buildEl.textContent = `Сборка ${APP_BUILD}`;
   renderCategories();
   renderTags();
   renderGrid();

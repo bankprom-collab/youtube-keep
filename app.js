@@ -437,6 +437,7 @@ function renderCategories() {
           <div class="dir-actions">
             <button type="button" class="dir-act" data-add-sub="${cat.id}" title="Подпапка" aria-label="Подпапка">+</button>
             <button type="button" class="dir-act" data-edit-cat="${cat.id}" title="Переименовать" aria-label="Переименовать">…</button>
+            <button type="button" class="dir-act" data-del-cat="${cat.id}" title="Удалить" aria-label="Удалить">×</button>
           </div>
         </div>`;
       })

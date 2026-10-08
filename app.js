@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.7";
+const APP_BUILD = "2026.10.08.8";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -526,6 +526,7 @@ function folderTilesHtml(folderId) {
           <div class="folder-actions always">
             <button type="button" class="mini-btn" data-add-sub="${cat.id}" title="Создать подпапку" aria-label="Создать подпапку">+</button>
             <button type="button" class="mini-btn" data-edit-cat="${cat.id}" title="Переименовать" aria-label="Переименовать">✎</button>
+            <button type="button" class="mini-btn" data-del-cat="${cat.id}" title="Удалить папку" aria-label="Удалить папку">×</button>
           </div>
         </div>`
         )
@@ -832,7 +833,9 @@ function openCategoryModal(category = null, parentCatId = null) {
   const isEdit = !!category;
   const parentId = isEdit ? category.parentId || null : parentCatId || null;
   document.getElementById("modal-cat-title").textContent = isEdit
-    ? "Редактировать папку"
+    ? parentId
+      ? "Редактировать подпапку"
+      : "Редактировать папку"
     : parentId
       ? "Новая подпапка"
       : "Новое направление";
@@ -973,6 +976,8 @@ function handleSaveCategory(e) {
     if (cat) {
       cat.name = name;
       cat.color = state.selectedCatColor;
+      // keep parent (subfolder stays inside its folder)
+      if (state.editingCategoryParentId) cat.parentId = state.editingCategoryParentId;
     }
     toast("Папка обновлена");
   } else {
@@ -1732,16 +1737,25 @@ function bindEvents() {
   document.getElementById("folder-strip")?.addEventListener("click", (e) => {
     const addSub = e.target.closest("[data-add-sub]");
     const edit = e.target.closest("[data-edit-cat]");
+    const del = e.target.closest("[data-del-cat]");
     const open = e.target.closest("[data-open-folder]");
     if (addSub) {
+      e.preventDefault();
       e.stopPropagation();
-      openCategoryModal(null, addSub.dataset.addSub);
+      openCategoryModal(null, addSub.getAttribute("data-add-sub"));
       return;
     }
     if (edit) {
+      e.preventDefault();
       e.stopPropagation();
       const cat = state.categories.find((c) => c.id === edit.dataset.editCat);
       if (cat) openCategoryModal(cat);
+      return;
+    }
+    if (del) {
+      e.preventDefault();
+      e.stopPropagation();
+      deleteCategory(del.getAttribute("data-del-cat"));
       return;
     }
     if (open) {

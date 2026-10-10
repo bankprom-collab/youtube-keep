@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.14";
+const APP_BUILD = "2026.10.08.15";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -48,6 +48,7 @@ const state = {
   editingNoteFolderId: null,
   editingNoteFolderParentId: null,
   notesOpen: true,
+  expandedNoteFolders: new Set(),
   importItems: [],
   sync: {
     token: "",
@@ -609,30 +610,65 @@ function folderTilesHtml(folderId) {
   `;
 }
 
+function noteFolderRows(parentId, depth = 0) {
+  const kids = noteFolderChildren(parentId).sort((a, b) =>
+    String(a.name || "").localeCompare(String(b.name || ""), "ru")
+  );
+  const rows = [];
+  for (const f of kids) {
+    const childFolders = noteFolderChildren(f.id);
+    const expanded = state.expandedNoteFolders.has(f.id);
+    rows.push({ f, depth, expanded, hasKids: childFolders.length > 0 });
+    if (expanded && childFolders.length) {
+      rows.push(...noteFolderRows(f.id, depth + 1));
+    }
+  }
+  return rows;
+}
+
 function renderNotesSidebar() {
   const list = document.getElementById("notes-list");
   const countEl = document.getElementById("count-notes");
   if (countEl) countEl.textContent = String((state.notes || []).length);
-
-  const parents = [null, currentNotesFolderId()].filter(
-    (v, i, a) => a.indexOf(v) === i
-  );
-  // show roots when on notes:all or root folder; show children when inside folder
-  const pid = currentNotesFolderId();
-  const items = noteFolderChildren(pid).sort((a, b) =>
-    String(a.name || "").localeCompare(String(b.name || ""), "ru")
-  );
-
   if (!list) return;
-  if (!items.length) {
-    list.innerHTML = `<div class="list-empty">Папок заметок нет</div>`;
+
+  const rows = noteFolderRows(null, 0);
+  const allActive = state.filter === "notes:all";
+
+  const rootAll = `
+    <div class="dir-row ${allActive ? "is-active" : ""}">
+      <button class="dir-btn" data-note-folder="" type="button">
+        <span class="dir-gear" aria-hidden="true">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M5 4h11l3 3v13H5V4z"/><path d="M8 10h8M8 14h6"/>
+          </svg>
+        </span>
+        <span class="dir-name">Все заметки</span>
+        <span class="dir-counts"><span class="dir-num">${(state.notes || []).length}</span></span>
+      </button>
+      <div class="dir-actions">
+        <button type="button" class="dir-act" data-note-folder-add="" title="Новая папка" aria-label="Новая папка">+</button>
+      </div>
+    </div>`;
+
+  if (!rows.length) {
+    list.innerHTML =
+      rootAll +
+      `<div class="list-empty">Папок пока нет. Нажмите + чтобы создать.</div>`;
     return;
   }
-  list.innerHTML = items
-    .map((f) => {
+
+  const body = rows
+    .map(({ f, depth, expanded, hasKids }) => {
       const active = state.filter === `notes:${f.id}`;
+      const chevron = hasKids
+        ? `<button type="button" class="dir-toggle ${expanded ? "is-open" : ""}" data-note-toggle="${f.id}" aria-label="Развернуть">
+             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>
+           </button>`
+        : `<span class="dir-toggle is-spacer" aria-hidden="true"></span>`;
       return `
-      <div class="dir-row ${active ? "is-active" : ""}">
+      <div class="dir-row ${active ? "is-active" : ""}" style="padding-left:${depth * 14}px">
+        ${chevron}
         <button class="dir-btn" data-note-folder="${f.id}" type="button">
           <span class="dir-gear" aria-hidden="true">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -651,6 +687,8 @@ function renderNotesSidebar() {
       </div>`;
     })
     .join("");
+
+  list.innerHTML = rootAll + body;
 }
 
 function renderNotesView() {
@@ -2368,9 +2406,19 @@ function bindEvents() {
 
   // tags filter
   document.getElementById("notes-list")?.addEventListener("click", (e) => {
+    const toggle = e.target.closest("[data-note-toggle]");
     const add = e.target.closest("[data-note-folder-add]");
     const edit = e.target.closest("[data-note-folder-edit]");
     const open = e.target.closest("[data-note-folder]");
+    if (toggle) {
+      e.preventDefault();
+      e.stopPropagation();
+      const id = toggle.getAttribute("data-note-toggle");
+      if (state.expandedNoteFolders.has(id)) state.expandedNoteFolders.delete(id);
+      else state.expandedNoteFolders.add(id);
+      renderNotesSidebar();
+      return;
+    }
     if (add) {
       e.preventDefault();
       openNoteFolderModal(null, add.getAttribute("data-note-folder-add") || null);
@@ -2382,7 +2430,18 @@ function bindEvents() {
       return;
     }
     if (open) {
-      state.filter = `notes:${open.getAttribute("data-note-folder")}`;
+      const id = open.getAttribute("data-note-folder");
+      state.filter = id ? `notes:${id}` : "notes:all";
+      if (id) {
+        state.expandedNoteFolders.add(id);
+        let cur = (state.noteFolders || []).find((f) => f.id === id);
+        const guard = new Set();
+        while (cur?.parentId && !guard.has(cur.id)) {
+          guard.add(cur.id);
+          state.expandedNoteFolders.add(cur.parentId);
+          cur = (state.noteFolders || []).find((f) => f.id === cur.parentId);
+        }
+      }
       render();
       closeSidebar();
     }

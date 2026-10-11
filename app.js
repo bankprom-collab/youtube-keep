@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.15";
+const APP_BUILD = "2026.10.08.16";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -93,6 +93,27 @@ function toast(message) {
 
 /* ---------- storage ---------- */
 
+function mergeLinkPair(a, b) {
+  // Prefer the record with the newer updatedAt, but keep the richer note/tags.
+  const base =
+    (a.updatedAt || "") >= (b.updatedAt || "") ? { ...a } : { ...b };
+  const other = base === a ? b : a;
+  if (!base.note && other.note) base.note = other.note;
+  if (!base.title || base.title === "Без названия") {
+    if (other.title && other.title !== "Без названия") base.title = other.title;
+  }
+  if (!(base.tags || []).length && (other.tags || []).length) {
+    base.tags = other.tags;
+  } else if ((other.tags || []).length) {
+    const set = new Set([...(base.tags || []), ...other.tags]);
+    base.tags = [...set];
+  }
+  if (!base.thumb && other.thumb) base.thumb = other.thumb;
+  if (!base.categoryId && other.categoryId) base.categoryId = other.categoryId;
+  if (other.pinned) base.pinned = true;
+  return base;
+}
+
 function normalizeLink(link) {
   return {
     id: link.id || uid(),
@@ -101,7 +122,14 @@ function normalizeLink(link) {
     url: link.url || "",
     videoId: link.videoId || parseYouTubeId(link.url),
     title: link.title || "Без названия",
-    note: link.note || "",
+    note: String(
+      link.note ??
+        link.text ??
+        link.comment ??
+        link.description ??
+        (Array.isArray(link.notes) ? link.notes.map((n) => n.text || n.body || n).join("\n") : "") ??
+        ""
+    ),
     categoryId: link.categoryId || null,
     tags: Array.isArray(link.tags)
       ? link.tags.map((t) => String(t).trim()).filter(Boolean)
@@ -139,6 +167,39 @@ function loadState() {
       : [];
     state.noteFolders = Array.isArray(data.noteFolders) ? data.noteFolders : [];
     state.notes = Array.isArray(data.notes) ? data.notes : [];
+
+    // recover standalone notes from older shapes
+    if (!state.notes.length) {
+      const legacyNotes = data.linkNotes || data.comments || data.legacyNotes || [];
+      if (Array.isArray(legacyNotes)) {
+        for (const n of legacyNotes) {
+          if (!n) continue;
+          state.notes.push({
+            id: n.id || uid(),
+            folderId: n.folderId || n.categoryId || null,
+            title: n.title || n.name || "Заметка",
+            text: String(n.text || n.body || n.note || ""),
+            createdAt: n.createdAt || nowIso(),
+            updatedAt: n.updatedAt || nowIso(),
+          });
+        }
+      }
+    }
+
+    // if a link used to hold only a note (no title), lift it into Notes
+    for (const l of state.links) {
+      if (l.note && !l.url && !l.videoId) {
+        state.notes.unshift({
+          id: l.id || uid(),
+          folderId: null,
+          title: l.title || "Заметка",
+          text: l.note,
+          createdAt: l.createdAt || nowIso(),
+          updatedAt: l.updatedAt || nowIso(),
+        });
+        l.note = "";
+      }
+    }
     state.deletedNoteFolderIds = Array.isArray(data.deletedNoteFolderIds)
       ? data.deletedNoteFolderIds
       : [];
@@ -1897,14 +1958,22 @@ async function syncPull(opts = {}) {
     const data = parseJsonSafe(file.content);
     if (!Array.isArray(data.links)) throw new Error("Некорректный формат данных");
 
-    // merge: keep newer by updatedAt per id
+    // merge links without losing notes from either side
     const map = new Map();
-    for (const link of [...state.links, ...data.links]) {
-      const norm = normalizeLink(link);
+    for (const raw of [...(state.links || []), ...(data.links || [])]) {
+      const norm = normalizeLink(raw);
       const prev = map.get(norm.id);
-      if (!prev || (norm.updatedAt || "") > (prev.updatedAt || "")) map.set(norm.id, norm);
+      map.set(norm.id, prev ? mergeLinkPair(prev, norm) : norm);
     }
-    state.links = [...map.values()];
+    // also merge by videoId/url so the same video from two devices keeps notes
+    const byKey = new Map();
+    for (const link of map.values()) {
+      const key = link.videoId || link.url || link.id;
+      const prev = byKey.get(key);
+      if (prev) byKey.set(key, mergeLinkPair(prev, link));
+      else byKey.set(key, link);
+    }
+    state.links = [...byKey.values()];
     // Merge deletions first so removed folders stay removed
     const dead = new Set([
       ...(state.deletedCategoryIds || []),
@@ -1986,14 +2055,24 @@ async function syncPull(opts = {}) {
       for (const n of [...(state.notes || []), ...(data.notes || [])]) {
         if (!n?.id || deadN.has(n.id)) continue;
         const prev = nmap.get(n.id);
-        if (!prev || (n.updatedAt || "") >= (prev.updatedAt || "")) {
-          nmap.set(n.id, {
-            id: n.id,
-            folderId: n.folderId || null,
-            title: n.title || "Заметка",
-            text: n.text || "",
-            updatedAt: n.updatedAt || "",
-            createdAt: n.createdAt || "",
+        const item = {
+          id: n.id,
+          folderId: n.folderId || null,
+          title: n.title || "Заметка",
+          text: String(n.text || n.body || n.note || ""),
+          updatedAt: n.updatedAt || "",
+          createdAt: n.createdAt || "",
+        };
+        if (!prev) nmap.set(item.id, item);
+        else {
+          // keep longer text / newer meta
+          const winner = (item.updatedAt || "") >= (prev.updatedAt || "") ? item : prev;
+          const withText =
+            (item.text || "").length >= (prev.text || "").length ? item : prev;
+          nmap.set(item.id, {
+            ...winner,
+            title: winner.title && winner.title !== "Заметка" ? winner.title : withText.title,
+            text: withText.text || winner.text || "",
           });
         }
       }

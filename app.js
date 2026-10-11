@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.17";
+const APP_BUILD = "2026.10.08.18";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -774,6 +774,22 @@ function renderNotesSidebar() {
   list.innerHTML = head + body;
 }
 
+function keepColorHex(id) {
+  const map = {
+    default: "#fffef7",
+    white: "#fffef7",
+    orange: "#fff3e0",
+    red: "#fce4ec",
+    yellow: "#fff8b3",
+    blue: "#e8f0fe",
+    green: "#e8f5e9",
+    purple: "#f3e8ff",
+    teal: "#e0f7fa",
+    gray: "#f4f4f4",
+  };
+  return map[id] || map.default;
+}
+
 function renderNotesView() {
   const hero = document.getElementById("folder-hero");
   const strip = document.getElementById("folder-strip");
@@ -790,8 +806,8 @@ function renderNotesView() {
 
   titleEl.textContent = folder ? folder.name : "Все заметки";
   subEl.textContent = folder
-    ? "Заметки и подпапки этой папки"
-    : "Личные заметки отдельно от видео";
+    ? "Метки и заметки"
+    : "Как в Google Keep — карточки, цвета, текст";
   if (crumbEl) {
     if (!folderId) crumbEl.innerHTML = "";
     else {
@@ -816,51 +832,17 @@ function renderNotesView() {
     }
   }
 
+  // Keep-style compose bar
   if (hero) {
-    if (folderId && folder) {
-      hero.hidden = false;
-      hero.innerHTML = `
-        <div class="folder-hero-inner">
-          <div class="folder-hero-icon" style="--folder-color:${folder.color || "#c2410c"}">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
-              <path d="M5 4h11l3 3v13H5V4z"/><path d="M8 10h8M8 14h6"/>
-            </svg>
-          </div>
-          <div class="folder-hero-text">
-            <div class="folder-hero-kicker">Папка заметок</div>
-            <h2 class="folder-hero-title">${escapeHtml(folder.name)}</h2>
-            <div class="folder-hero-meta">
-              <span>${notesInFolder(folderId).length} заметок</span>
-            </div>
-          </div>
-          <div class="folder-hero-actions">
-            <button type="button" class="secondary-btn" data-note-folder-add="${folderId}">+ Подпапка</button>
-            <button type="button" class="primary-btn" data-note-add="${folderId}">+ Заметка</button>
-          </div>
-        </div>`;
-    } else {
-      hero.hidden = false;
-      hero.innerHTML = `
-        <div class="folder-hero-inner">
-          <div class="folder-hero-icon" style="--folder-color:#c2410c">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
-              <path d="M5 4h11l3 3v13H5V4z"/><path d="M8 10h8M8 14h6"/>
-            </svg>
-          </div>
-          <div class="folder-hero-text">
-            <div class="folder-hero-kicker">Заметки</div>
-            <h2 class="folder-hero-title">Библиотека заметок</h2>
-            <div class="folder-hero-meta"><span>${(state.notes || []).length} заметок</span></div>
-          </div>
-          <div class="folder-hero-actions">
-            <button type="button" class="secondary-btn" data-note-folder-add="">+ Папка</button>
-            <button type="button" class="primary-btn" data-note-add="">+ Заметка</button>
-          </div>
-        </div>`;
-    }
+    hero.hidden = false;
+    hero.innerHTML = `
+      <button type="button" class="keep-compose" data-note-add="${folderId || ""}">
+        <span class="keep-compose-hint">Заметка…</span>
+        <span class="keep-compose-plus">+</span>
+      </button>`;
   }
 
-  // subfolders strip
+  // label/folder chips (optional, not a hard tree)
   const kids = noteFolderChildren(folderId).sort((a, b) =>
     String(a.name || "").localeCompare(String(b.name || ""), "ru")
   );
@@ -868,80 +850,64 @@ function renderNotesView() {
     if (!kids.length) strip.innerHTML = "";
     else {
       strip.innerHTML =
-        `<div class="folder-strip-label">Вложенные папки</div>` +
-        kids
-          .map(
-            (cat) => `
-        <div class="folder-tile-wrap" style="--folder-color:${cat.color || "#c2410c"}">
-          <button type="button" class="folder-tile" data-note-folder="${cat.id}">
-            <span class="folder-icon" aria-hidden="true">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                <path d="M5 4h11l3 3v13H5V4z"/><path d="M8 10h8M8 14h6"/>
-              </svg>
-            </span>
-            <span class="folder-name">${escapeHtml(cat.name)}</span>
-            <span class="folder-badges">
-              ${noteFolderChildren(cat.id).length ? `<span class="badge badge-folders">${noteFolderChildren(cat.id).length} пап</span>` : ""}
-              <span class="badge badge-links">${notesInFolder(cat.id).length}</span>
-            </span>
-          </button>
-          <div class="folder-actions always">
-            <button type="button" class="mini-btn" data-note-folder-add="${cat.id}" title="Подпапка">+</button>
-            <button type="button" class="mini-btn" data-note-folder-edit="${cat.id}" title="Переименовать">✎</button>
-            <button type="button" class="mini-btn" data-note-folder-del="${cat.id}" title="Удалить">×</button>
-          </div>
-        </div>`
-          )
-          .join("");
+        `<div class="folder-strip-label">Метки</div>
+         <div class="keep-labels">
+          ${kids
+            .map(
+              (f) => `
+            <button type="button" class="keep-label ${state.filter === `notes:${f.id}` ? "is-active" : ""}" data-note-folder="${f.id}">
+              ${escapeHtml(f.name)}
+              <span class="keep-label-count">${notesInFolder(f.id).length}</span>
+            </button>`
+            )
+            .join("")}
+           <button type="button" class="keep-label keep-label-add" data-note-folder-add="${folderId || ""}">+ метка</button>
+         </div>`;
     }
   }
 
-  const list = notesInFolder(folderId)
+  let list = notesInFolder(folderId)
     .slice()
-    .sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
+    .sort((a, b) => {
+      if (!!b.pinned !== !!a.pinned) return b.pinned ? 1 : -1;
+      return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+    });
 
   if (!list.length && !kids.length) {
     if (grid) grid.innerHTML = "";
     if (empty) {
-      empty.hidden = false;
-      empty.querySelector(".empty-title").textContent = "Заметок пока нет";
-      empty.querySelector(".empty-text").textContent =
-        "Создайте папку или первую заметку.";
-      const btn = empty.querySelector("#btn-empty-add");
-      if (btn) {
-        btn.textContent = "Добавить заметку";
-        btn.setAttribute("data-note-add", folderId || "");
-        btn.removeAttribute("id");
-      }
+      empty.hidden = true;
     }
     return;
   }
   if (empty) empty.hidden = true;
 
   if (grid) {
+    grid.className = "keep-masonry";
     grid.innerHTML = list
       .map((n) => {
-        const preview = String(n.text || "")
-          .replace(/\s+/g, " ")
-          .slice(0, 140);
+        const bg = keepColorHex(n.color);
+        const labelName = n.folderId
+          ? (state.noteFolders || []).find((f) => f.id === n.folderId)?.name
+          : "";
         return `
-        <article class="card note-card" data-note-id="${n.id}">
-          <div class="card-body">
-            <div class="card-top">
-              <h3 class="card-title">${escapeHtml(n.title || "Заметка")}</h3>
-            </div>
-            <p class="card-note">${escapeHtml(preview)}${preview.length >= 140 ? "…" : ""}</p>
-            <div class="card-meta">
-              <span class="chip">${n.updatedAt ? new Date(n.updatedAt).toLocaleDateString("ru-RU") : ""}</span>
-              <div class="card-actions">
-                <button class="icon-btn" data-note-open="${n.id}" title="Открыть" aria-label="Открыть">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 4h11l3 3v13H5V4z"/></svg>
-                </button>
-                <button class="icon-btn danger" data-note-del="${n.id}" title="Удалить" aria-label="Удалить">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
-                </button>
-              </div>
-            </div>
+        <article class="keep-card" style="background:${bg}" data-note-id="${n.id}">
+          <button type="button" class="keep-card-open" data-note-open="${n.id}">
+            <h3 class="keep-card-title">${escapeHtml(n.title || "")}</h3>
+            <div class="keep-card-text">${escapeHtml(n.text || "")}</div>
+          </button>
+          ${
+            labelName
+              ? `<div class="keep-card-label">${escapeHtml(labelName)}</div>`
+              : ""
+          }
+          <div class="keep-card-tools">
+            <button type="button" class="keep-tool" data-note-pin="${n.id}" title="Закрепить" aria-label="Закрепить">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="${n.pinned ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.8"><path d="M12 3l2.2 6.4H21l-5.3 3.9 2 6.4L12 16.8 6.3 19.7l2-6.4L3 9.4h6.8L12 3z"/></svg>
+            </button>
+            <button type="button" class="keep-tool" data-note-del="${n.id}" title="Удалить" aria-label="Удалить">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+            </button>
           </div>
         </article>`;
       })
@@ -949,311 +915,52 @@ function renderNotesView() {
   }
 }
 
-function renderGrid() {
-  if (state.filter.startsWith("notes:")) {
-    renderNotesSidebar();
-    renderNotesView();
-    return;
-  }
-  renderNotesSidebar();
-  const grid = document.getElementById("grid");
-  const empty = document.getElementById("empty");
-  const folderId = currentFolderId();
-
-  // drill-down: only links sitting in THIS folder (subfolders are tiles)
-  let list = [...state.links];
-  if (state.filter === "pinned") {
-    list = list.filter((l) => l.pinned);
-  } else if (folderId) {
-    list = list.filter((l) => l.categoryId === folderId);
-  }
-
-  if (state.activeTags.size) {
-    list = list.filter((l) => {
-      const tags = (l.tags || []).map((t) => t.toLowerCase());
-      return [...state.activeTags].every((t) => tags.includes(t));
-    });
-  }
-
-  const q = state.query.trim().toLowerCase();
-  if (q) {
-    list = list.filter((l) => {
-      const cat = state.categories.find((c) => c.id === l.categoryId);
-      const hay = [l.title, l.note, l.url, cat?.name, (l.tags || []).join(" ")]
-        .join(" ")
-        .toLowerCase();
-      return hay.includes(q);
-    });
-  }
-
-  const sort = state.sort;
-  list.sort((a, b) => {
-    if (sort === "title") return (a.title || "").localeCompare(b.title || "", "ru");
-    if (sort === "category") {
-      const an = state.categories.find((c) => c.id === a.categoryId)?.name || "";
-      const bn = state.categories.find((c) => c.id === b.categoryId)?.name || "";
-      return an.localeCompare(bn, "ru") || (a.title || "").localeCompare(b.title || "", "ru");
-    }
-    if (sort === "pinned") {
-      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-    }
-    return (b.updatedAt || b.createdAt || "").localeCompare(a.updatedAt || a.createdAt || "");
-  });
-
-  const titleEl = document.getElementById("page-title");
-  const subEl = document.getElementById("page-sub");
-  const crumbEl = document.getElementById("breadcrumbs");
-  const folderStrip = document.getElementById("folder-strip");
-
-  if (state.filter === "pinned") {
-    titleEl.textContent = "Закреплённые";
-    subEl.textContent = "Самое важное — под рукой";
-    if (crumbEl) crumbEl.innerHTML = "";
-    if (folderStrip) folderStrip.innerHTML = "";
-    const hero = document.getElementById("folder-hero");
-    if (hero) {
-      hero.hidden = true;
-      hero.innerHTML = "";
-    }
-  } else if (folderId) {
-    const cat = state.categories.find((c) => c.id === folderId);
-    const isSub = !!cat?.parentId;
-    const path = categoryPathLabel(folderId);
-    titleEl.textContent = cat?.name || "Папка";
-    subEl.textContent = isSub ? "Содержимое подпапки ниже" : "Папка и её вложенные разделы ниже";
-    if (crumbEl) crumbEl.innerHTML = breadcrumbHtml(folderId);
-
-    // big identity card: which folder you are in + YouTube cards underneath
-    const hero = document.getElementById("folder-hero");
-    if (hero) {
-      const linkCount = state.links.filter((l) => l.categoryId === folderId).length;
-      const subCount = categoryChildren(folderId).length;
-      hero.hidden = false;
-      hero.innerHTML = `
-        <div class="folder-hero-inner">
-          <div class="folder-hero-icon" style="--folder-color:${cat?.color || "#c2410c"}">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
-              <path d="M3 7.5A2.5 2.5 0 015.5 5H9l2 2.5h7.5A2.5 2.5 0 0121 10v7.5a2.5 2.5 0 01-2.5 2.5h-13A2.5 2.5 0 013 17.5v-10z"/>
-            </svg>
-          </div>
-          <div class="folder-hero-text">
-            <div class="folder-hero-kicker">${isSub ? "Подпапка" : "Папка"} · ${escapeHtml(path)}</div>
-            <h2 class="folder-hero-title">${escapeHtml(cat?.name || "Папка")}</h2>
-            <div class="folder-hero-meta">
-              <span>${linkCount} ${plural(linkCount, "ссылка", "ссылки", "ссылок")}</span>
-              ${subCount ? `<span class="dot-sep">·</span><span>${subCount} ${plural(subCount, "подпапка", "подпапки", "подпапок")}</span>` : ""}
-            </div>
-          </div>
-          <div class="folder-hero-actions">
-            <button type="button" class="secondary-btn" data-add-sub="${folderId}">+ Подпапка</button>
-            <button type="button" class="secondary-btn" data-edit-cat="${folderId}">Переименовать</button>
-          </div>
-        </div>`;
-    }
-
-    if (folderStrip) {
-      const kids = folderTilesHtml(folderId);
-      folderStrip.innerHTML = kids
-        ? `<div class="folder-strip-label">Вложенные папки</div>` + kids
-        : "";
-    }
-  } else {
-    titleEl.textContent = "Все ссылки";
-    subEl.textContent = "Выберите направление слева или папку ниже";
-    if (crumbEl) crumbEl.innerHTML = "";
-    const hero = document.getElementById("folder-hero");
-    if (hero) {
-      hero.hidden = true;
-      hero.innerHTML = "";
-    }
-    if (folderStrip) folderStrip.innerHTML = folderTilesHtml(null);
-  }
-
-  if (!list.length && !(folderStrip && folderStrip.innerHTML)) {
-    grid.innerHTML = "";
-    empty.hidden = false;
-    return;
-  }
-  empty.hidden = true;
-
-  grid.innerHTML = list
-    .map((link) => {
-      const cat = state.categories.find((c) => c.id === link.categoryId);
-      const videoId = link.videoId || parseYouTubeId(link.url);
-      const thumb = link.thumb || (videoId ? thumbUrl(videoId) : "");
-      return `
-        <article class="card" style="--card-bg:${colorBg(link.color)}" data-id="${link.id}">
-          <a class="card-link card-thumb" href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">
-            ${thumb ? `<img src="${escapeHtml(thumb)}" alt="" loading="lazy" />` : ""}
-            <div class="card-play"><div class="play-circle">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>
-            </div></div>
-          </a>
-          <div class="card-body">
-            <div class="card-top">
-              <a class="card-link" href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">
-                <h3 class="card-title">${escapeHtml(link.title || "Без названия")}</h3>
-              </a>
-            </div>
-            <div class="note-fold" data-note-fold="${link.id}">
-              <button type="button" class="note-fold-head" data-note="${link.id}" aria-expanded="false">
-                <span class="note-fold-icon" aria-hidden="true">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
-                </span>
-                <span class="note-fold-label">Заметка</span>
-                <span class="note-fold-preview">${link.note ? escapeHtml(String(link.note).replace(/\s+/g, " ").slice(0, 64) + (String(link.note).length > 64 ? "…" : "")) : "добавить текст"}</span>
-              </button>
-              <div class="note-fold-body" hidden>
-                <textarea class="note-fold-input" rows="4" placeholder="О чём видео, мысли, что запомнить…">${escapeHtml(link.note || "")}</textarea>
-                <div class="note-fold-actions">
-                  <button type="button" class="secondary-btn note-save" data-note-save="${link.id}">Готово</button>
-                  ${
-                    link.note
-                      ? `<button type="button" class="ghost-btn note-clear" data-note-clear="${link.id}">Очистить</button>`
-                      : ""
-                  }
-                </div>
-              </div>
-            </div>
-            <div class="card-meta">
-              ${
-                cat
-                  ? `<span class="chip"><span class="chip-dot" style="background:${cat.color}"></span>${escapeHtml(cat.name)}</span>`
-                  : `<span class="chip">Без папки</span>`
-              }
-              <div class="card-actions">
-                <button class="icon-btn ${link.pinned ? "is-active" : ""}" data-pin="${link.id}" title="${link.pinned ? "Открепить" : "Закрепить"}" aria-label="${link.pinned ? "Открепить" : "Закрепить"}">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="${link.pinned ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.8"><path d="M12 3l2.2 6.4H21l-5.3 3.9 2 6.4L12 16.8 6.3 19.7l2-6.4L3 9.4h6.8L12 3z"/></svg>
-                </button>
-                <button class="icon-btn" data-edit="${link.id}" title="Редактировать" aria-label="Редактировать">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                </button>
-                <button class="icon-btn danger" data-delete="${link.id}" title="Удалить" aria-label="Удалить">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
-                </button>
-              </div>
-            </div>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
-}
-
-function allTags() {
-  const map = new Map();
-  for (const link of state.links) {
-    for (const tag of link.tags || []) {
-      const key = tag.toLowerCase();
-      map.set(key, (map.get(key) || 0) + 1);
-    }
-  }
-  return [...map.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ru"));
-}
-
-function renderTags() {
-  const el = document.getElementById("tag-list");
-  const tags = allTags();
-  if (!tags.length) {
-    el.innerHTML = `<span class="hint">Теги появятся у карточек</span>`;
-    return;
-  }
-  el.innerHTML = tags
-    .map(([tag, count]) => {
-      const active = state.activeTags.has(tag);
-      return `<button type="button" class="tag-chip ${active ? "is-active" : ""}" data-tag="${escapeHtml(tag)}">
-        <span>#${escapeHtml(tag)}</span><span class="tag-count">${count}</span>
-      </button>`;
-    })
-    .join("");
-}
-
-function parseTagsInput(value) {
-  return String(value || "")
-    .split(/[,;#\n]/)
-    .map((t) => t.trim().replace(/^#/, ""))
-    .filter(Boolean);
-}
-
-function render() {
-  const buildEl = document.getElementById("build-label");
-  if (buildEl) buildEl.textContent = `Сборка ${APP_BUILD}`;
-  renderCategories();
-  renderTags();
-  renderGrid();
-  fillCategorySelect();
-  renderSyncStatus();
-  const setup = document.getElementById("setup-banner");
-  const sync = document.getElementById("sync-banner");
-  const ready = isCloudReady();
-  if (setup) {
-    if (ready) setup.setAttribute("hidden", "");
-    else setup.removeAttribute("hidden");
-  }
-  if (sync) {
-    if (ready) sync.removeAttribute("hidden");
-    else sync.setAttribute("hidden", "");
-  }
-}
-
-function fillCategorySelect() {
-  const rows = buildCategoryTreeRows();
-  const options =
-    `<option value="">Без папки</option>` +
-    rows
-      .map(({ cat, depth }) => {
-        const pad = "\u00A0".repeat(depth * 2);
-        return `<option value="${cat.id}">${pad}${escapeHtml(categoryPathLabel(cat.id))}</option>`;
-      })
-      .join("");
-  for (const id of ["link-category", "import-category"]) {
-    const select = document.getElementById(id);
-    if (!select) continue;
-    const current = select.value;
-    select.innerHTML = options;
-    if ([...select.options].some((o) => o.value === current)) select.value = current;
-  }
-}
-
-function openModal(id) {
-  document.getElementById(id).hidden = false;
-  document.body.style.overflow = "hidden";
-}
-
-function closeModal(id) {
-  document.getElementById(id).hidden = true;
-  if (![...document.querySelectorAll(".modal")].some((m) => !m.hidden)) {
-    document.body.style.overflow = "";
-  }
-}
-
-function renderColorPicks(containerId, colors, selectedId, onPick) {
-  const el = document.getElementById(containerId);
-  el.innerHTML = colors
-    .map((c) => {
-      const id = typeof c === "string" ? c : c.id;
-      const bg = typeof c === "string" ? c : c.bg;
-      return `<button type="button" class="color-swatch ${id === selectedId ? "is-selected" : ""}" data-color="${id}" style="background:${bg}" aria-label="Цвет ${id}"></button>`;
-    })
-    .join("");
-  el.onclick = (e) => {
-    const btn = e.target.closest("[data-color]");
-    if (!btn) return;
-    onPick(btn.dataset.color);
-  };
-}
+const KEEP_SWATCHES = [
+  { id: "default", bg: "#fffef7" },
+  { id: "orange", bg: "#fff3e0" },
+  { id: "red", bg: "#fce4ec" },
+  { id: "yellow", bg: "#fff8b3" },
+  { id: "blue", bg: "#e8f0fe" },
+  { id: "green", bg: "#e8f5e9" },
+  { id: "purple", bg: "#f3e8ff" },
+  { id: "teal", bg: "#e0f7fa" },
+];
 
 function openNoteStoreModal(noteId = null, folderId = null) {
   state.editingNoteId = noteId;
   const note = noteId ? (state.notes || []).find((n) => n.id === noteId) : null;
-  document.getElementById("note-store-title").textContent = note ? "Редактировать заметку" : "Новая заметка";
+  document.getElementById("note-store-title").textContent = note
+    ? "Заметка"
+    : "Новая заметка";
   document.getElementById("note-store-name").value = note?.title || "";
   document.getElementById("note-store-text").value = note?.text || "";
+  state.selectedNoteColor = note?.color || "default";
   const del = document.getElementById("btn-note-store-delete");
   if (del) del.hidden = !note;
-  state.editingNoteFolderParentId = folderId !== null ? folderId : note?.folderId || currentNotesFolderId();
+  state.editingNoteFolderParentId =
+    folderId !== null ? folderId : note?.folderId || currentNotesFolderId();
+
+  const picks = document.getElementById("note-store-colors");
+  if (picks) {
+    const paint = () => {
+      picks.innerHTML = KEEP_SWATCHES.map(
+        (c) =>
+          `<button type="button" class="color-swatch ${
+            state.selectedNoteColor === c.id ? "is-selected" : ""
+          }" data-note-color="${c.id}" style="background:${c.bg}" aria-label="Цвет"></button>`
+      ).join("");
+    };
+    paint();
+    picks.onclick = (e) => {
+      const b = e.target.closest("[data-note-color]");
+      if (!b) return;
+      state.selectedNoteColor = b.getAttribute("data-note-color");
+      paint();
+    };
+  }
+
   openModal("modal-note-store");
-  setTimeout(() => document.getElementById("note-store-name")?.focus(), 50);
+  setTimeout(() => document.getElementById("note-store-text")?.focus(), 40);
 }
 
 function openNoteFolderModal(folderId = null, parentId = null) {
@@ -2093,6 +1800,8 @@ async function syncPull(opts = {}) {
             (item.text || "").length >= (prev.text || "").length ? item : prev;
           nmap.set(item.id, {
             ...winner,
+            color: winner.color || withText.color || "default",
+            pinned: !!(winner.pinned || withText.pinned),
             title: winner.title && winner.title !== "Заметка" ? winner.title : withText.title,
             text: withText.text || winner.text || "",
           });
@@ -2625,7 +2334,22 @@ function bindEvents() {
   document.getElementById("grid")?.addEventListener("click", (e) => {
     const open = e.target.closest("[data-note-open]");
     const del = e.target.closest("[data-note-del]");
+    const pin = e.target.closest("[data-note-pin]");
     const addNote = e.target.closest("[data-note-add]");
+    if (pin && state.filter.startsWith("notes:")) {
+      e.preventDefault();
+      e.stopPropagation();
+      const id = pin.getAttribute("data-note-pin");
+      const n = state.notes.find((x) => x.id === id);
+      if (n) {
+        n.pinned = !n.pinned;
+        n.updatedAt = nowIso();
+        saveState();
+        render();
+        toast(n.pinned ? "Закреплено" : "Откреплено");
+      }
+      return;
+    }
     if (addNote && state.filter.startsWith("notes:")) {
       e.preventDefault();
       openNoteStoreModal(null, addNote.getAttribute("data-note-add") || null);
@@ -2757,21 +2481,25 @@ function bindEvents() {
     const title = document.getElementById("note-store-name").value.trim() || "Заметка";
     const text = document.getElementById("note-store-text").value;
     const folderId = state.editingNoteFolderParentId || null;
+    const color = state.selectedNoteColor || "default";
     if (state.editingNoteId) {
       const n = state.notes.find((x) => x.id === state.editingNoteId);
       if (n) {
         n.title = title;
         n.text = text;
         n.folderId = folderId;
+        n.color = color;
         n.updatedAt = nowIso();
       }
-      toast("Заметка обновлена");
+      toast("Заметка сохранена");
     } else {
       state.notes.unshift({
         id: uid(),
         folderId,
         title,
         text,
+        color,
+        pinned: false,
         createdAt: nowIso(),
         updatedAt: nowIso(),
       });

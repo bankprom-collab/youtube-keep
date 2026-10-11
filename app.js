@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.16";
+const APP_BUILD = "2026.10.08.17";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -49,6 +49,7 @@ const state = {
   editingNoteFolderParentId: null,
   notesOpen: true,
   expandedNoteFolders: new Set(),
+  notesTreeOpen: false,
   importItems: [],
   sync: {
     token: "",
@@ -687,18 +688,38 @@ function noteFolderRows(parentId, depth = 0) {
   return rows;
 }
 
+function noteFolderRows(parentId, depth = 0) {
+  const kids = noteFolderChildren(parentId).sort((a, b) =>
+    String(a.name || "").localeCompare(String(b.name || ""), "ru")
+  );
+  const rows = [];
+  for (const f of kids) {
+    const childFolders = noteFolderChildren(f.id);
+    const expanded = state.expandedNoteFolders.has(f.id);
+    rows.push({ f, depth, expanded, hasKids: childFolders.length > 0 });
+    if (expanded && childFolders.length) {
+      rows.push(...noteFolderRows(f.id, depth + 1));
+    }
+  }
+  return rows;
+}
+
 function renderNotesSidebar() {
   const list = document.getElementById("notes-list");
   const countEl = document.getElementById("count-notes");
   if (countEl) countEl.textContent = String((state.notes || []).length);
   if (!list) return;
 
-  const rows = noteFolderRows(null, 0);
   const allActive = state.filter === "notes:all";
+  const open = !!state.notesTreeOpen;
 
-  const rootAll = `
-    <div class="dir-row ${allActive ? "is-active" : ""}">
-      <button class="dir-btn" data-note-folder="" type="button">
+  // Single collapsed row: «Все заметки». Everything else hides inside.
+  const head = `
+    <div class="notes-head ${allActive ? "is-active" : ""}">
+      <button type="button" class="notes-head-toggle ${open ? "is-open" : ""}" data-notes-tree aria-expanded="${open}" title="Развернуть / свернуть">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <button class="dir-btn notes-head-label" data-note-folder="" type="button">
         <span class="dir-gear" aria-hidden="true">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
             <path d="M5 4h11l3 3v13H5V4z"/><path d="M8 10h8M8 14h6"/>
@@ -707,18 +728,19 @@ function renderNotesSidebar() {
         <span class="dir-name">Все заметки</span>
         <span class="dir-counts"><span class="dir-num">${(state.notes || []).length}</span></span>
       </button>
-      <div class="dir-actions">
-        <button type="button" class="dir-act" data-note-folder-add="" title="Новая папка" aria-label="Новая папка">+</button>
-      </div>
+      ${
+        open
+          ? `<button type="button" class="dir-act" data-note-folder-add="" title="Новая папка" aria-label="Новая папка">+</button>`
+          : ""
+      }
     </div>`;
 
-  if (!rows.length) {
-    list.innerHTML =
-      rootAll +
-      `<div class="list-empty">Папок пока нет. Нажмите + чтобы создать.</div>`;
+  if (!open) {
+    list.innerHTML = head;
     return;
   }
 
+  const rows = noteFolderRows(null, 0);
   const body = rows
     .map(({ f, depth, expanded, hasKids }) => {
       const active = state.filter === `notes:${f.id}`;
@@ -749,7 +771,7 @@ function renderNotesSidebar() {
     })
     .join("");
 
-  list.innerHTML = rootAll + body;
+  list.innerHTML = head + body;
 }
 
 function renderNotesView() {
@@ -2485,6 +2507,14 @@ function bindEvents() {
 
   // tags filter
   document.getElementById("notes-list")?.addEventListener("click", (e) => {
+    const treeToggle = e.target.closest("[data-notes-tree]");
+    if (treeToggle) {
+      e.preventDefault();
+      e.stopPropagation();
+      state.notesTreeOpen = !state.notesTreeOpen;
+      renderNotesSidebar();
+      return;
+    }
     const toggle = e.target.closest("[data-note-toggle]");
     const add = e.target.closest("[data-note-folder-add]");
     const edit = e.target.closest("[data-note-folder-edit]");
@@ -2527,6 +2557,7 @@ function bindEvents() {
   });
 
   document.getElementById("nav-notes")?.addEventListener("click", () => {
+    state.notesTreeOpen = !state.notesTreeOpen;
     state.filter = "notes:all";
     render();
     closeSidebar();

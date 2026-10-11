@@ -2141,3 +2141,37 @@ img {
     columns: 3;
   }
 }
+
+
+.install-fab {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 45;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--bg-elevated);
+  color: var(--ink-2);
+  font-size: 0.85rem;
+  font-weight: 650;
+  box-shadow: var(--shadow-md);
+}
+
+.install-fab:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.install-steps {
+  margin: 0 0 12px;
+  padding-left: 1.2em;
+  color: var(--ink-2);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.install-steps li {
+  margin: 6px 0;
+}

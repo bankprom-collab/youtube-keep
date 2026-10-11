@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.18";
+const APP_BUILD = "2026.10.08.19";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -2614,3 +2614,26 @@ loadState();
 bindEvents();
 render();
 loadAppConfig().then(() => applyHashCredentials());
+
+// Huawei/HarmonyOS often cannot install PWA — show help after a few seconds if not standalone
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+if (window.matchMedia("(display-mode: browser)").matches) {
+  setTimeout(() => {
+    if (localStorage.getItem("youtube-keep:install-hint") === "1") return;
+    const ua = navigator.userAgent || "";
+    const maybeHuawei = /Huawei|HarmonyOS|HMSCore|HB4A|HONOR/i.test(ua);
+    if (maybeHuawei || true) {
+      // quiet corner help button instead of a modal nag
+      const fab = document.createElement("button");
+      fab.type = "button";
+      fab.className = "install-fab";
+      fab.textContent = "Как установить";
+      fab.addEventListener("click", () => {
+        openModal("modal-install");
+      });
+      document.body.appendChild(fab);
+    }
+  }, 1800);
+}

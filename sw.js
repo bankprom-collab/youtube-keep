@@ -1,5 +1,5 @@
 /* YouTube Keep service worker */
-const CACHE = "youtube-keep-v22-2026.10.08.18";
+const CACHE = "youtube-keep-v23-2026.10.08.19";
 const ASSETS = [
   "./",
   "./index.html",

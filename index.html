@@ -3,14 +3,19 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#FAF7F2" />
+  <meta name="theme-color" content="#F7F3ED" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="YT Keep" />
+  <meta name="application-name" content="YouTube Keep" />
   <meta name="description" content="YouTube Keep — библиотека YouTube-ссылок с направлениями" />
   <title>YouTube Keep</title>
-  <link rel="manifest" href="manifest.json?v=2026.10.08.18" />
+  <link rel="manifest" href="manifest.json?v=2026.10.08.19" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=2026.10.08.18" />
+  <link rel="stylesheet" href="styles.css?v=2026.10.08.19" />
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="icons/icon-180.png" />
 </head>
@@ -78,7 +83,7 @@
       </div>
 
       <div class="sidebar-footer">
-        <div class="build-line"><span id="build-label">Сборка 2026.10.08.18</span></div>
+        <div class="build-line"><span id="build-label">Сборка 2026.10.08.19</span></div>
         <div class="sync-row">
           <div class="sync-status" id="sync-status">
             <span class="sync-dot" id="sync-dot"></span>
@@ -489,6 +494,32 @@
     </div>
   </div>
 
+  <!-- Huawei / install help -->
+  <div class="modal" id="modal-install" hidden>
+    <div class="modal-backdrop" data-close="modal-install"></div>
+    <div class="modal-card" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <h2>Установка на телефон</h2>
+        <button class="icon-btn" type="button" data-close="modal-install" aria-label="Закрыть">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <div class="form install-help" id="huawei-help">
+        <p class="hint"><strong>Huawei / HarmonyOS</strong></p>
+        <ol class="install-steps">
+          <li>Откройте ссылку в браузере <strong>Chrome</strong> или <strong>Edge</strong> (не в «Интернет» от Huawei, если он не предлагает установку).</li>
+          <li>Меню <strong>⋮</strong> → <strong>«Установить приложение»</strong> / <strong>«Добавить на главный экран»</strong>.</li>
+          <li>Готово — иконка появится на рабочем столе.</li>
+        </ol>
+        <p class="hint">Если Chrome нет: <strong>Petal Browser / Via / Firefox</strong> → «Добавить на домашний экран». Это ярлык откроет приложение без адресной строки.</p>
+        <p class="hint">Приложение работает и просто в браузере: синхронизация включена автоматически.</p>
+        <div class="modal-actions">
+          <button type="button" class="primary-btn" data-close="modal-install">Понятно</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Confirm delete -->
   <div class="modal" id="modal-confirm" hidden>
     <div class="modal-backdrop" data-close="modal-confirm"></div>
@@ -509,6 +540,6 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-  <script src="app.js?v=2026.10.08.18"></script>
+  <script src="app.js?v=2026.10.08.19"></script>
 </body>
 </html>

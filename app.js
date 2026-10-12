@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.30";
+const APP_BUILD = "2026.10.08.31";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -1157,11 +1157,16 @@ function renderNotesView() {
             <div class="keep-card-text">${escapeHtml(n.text || "")}</div>
           </button>
           ${
-            n.voice?.data
+            noteVoices(n).length
               ? `<div class="keep-card-voice">
-                   <div class="voice-player-label">Голос</div>
-                   <audio controls class="voice-audio voice-audio-mini" src="${n.voice.data}"></audio>
-                   <button type="button" class="voice-del" data-note-voice-del="${n.id}" title="Удалить аудио">×</button>
+                   <div class="voice-player-label">Голосовые записи (${noteVoices(n).length})</div>
+                   ${noteVoices(n)
+                     .map(
+                       (v, i) => `
+                     <div class="voice-row-title">Запись №${i + 1}</div>
+                     <audio controls class="voice-audio voice-audio-mini" src="${v.data}"></audio>`
+                     )
+                     .join("")}
                  </div>`
               : ""
           }
@@ -1309,7 +1314,8 @@ function renderVoicePlayer(noteId) {
   const box = document.getElementById("voice-player");
   const n = (state.notes || []).find((x) => x.id === noteId);
   if (!box) return;
-  if (!n?.voice?.data) {
+  const list = noteVoices(n);
+  if (!list.length) {
     box.hidden = true;
     box.innerHTML = "";
     return;
@@ -1317,48 +1323,75 @@ function renderVoicePlayer(noteId) {
   box.hidden = false;
   box.innerHTML = `
     <div class="voice-player-inner">
-      <div class="voice-player-label">Голосовая запись в этой заметке</div>
-      <audio controls class="voice-audio" src="${n.voice.data}"></audio>
-      <div class="voice-player-actions">
-        <button type="button" class="ghost-btn" id="btn-voice-delete">Удалить запись</button>
-      </div>
+      <div class="voice-player-label">Голосовые записи (${list.length})</div>
+      ${list
+        .map(
+          (v, i) => `
+        <div class="voice-row-item">
+          <div class="voice-row-title">Запись №${i + 1} · ${new Date(v.at || Date.now()).toLocaleString("ru-RU")}</div>
+          <audio controls class="voice-audio" src="${v.data}"></audio>
+          <button type="button" class="ghost-btn voice-row-del" data-voice-idx="${i}">Удалить эту запись</button>
+        </div>`
+        )
+        .join("")}
     </div>`;
-  const del = document.getElementById("btn-voice-delete");
-  if (del) {
-    del.addEventListener("click", () => {
-      deleteVoiceNote(noteId);
-      renderVoicePlayer(noteId);
+  box.querySelectorAll("[data-voice-idx]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = parseInt(btn.getAttribute("data-voice-idx"), 10);
+      confirmAction("Удалить голосовую запись?", `Запись №${idx + 1} будет стёрта. Уверены?`, () => {
+        const arr = noteVoices(n);
+        arr.splice(idx, 1);
+        n.voices = arr;
+        delete n.voice;
+        n.updatedAt = nowIso();
+        saveState();
+        render();
+        renderVoicePlayer(noteId);
+        toast("Запись удалена");
+      });
     });
-  }
+  });
+}
+
+function noteVoices(note) {
+  if (!note) return [];
+  if (Array.isArray(note.voices) && note.voices.length) return note.voices;
+  if (note.voice && note.voice.data) return [note.voice];
+  return [];
 }
 
 function attachVoiceToNote(noteId, dataUrl, mime) {
-  const n = (state.notes || []).find((x) => x.id === noteId);
+  let n = (state.notes || []).find((x) => x.id === noteId);
+  const item = {
+    id: uid(),
+    data: dataUrl,
+    mime: mime || "audio/webm",
+    at: nowIso(),
+  };
   if (!n) {
-    // create note on the fly
-    state.notes.unshift({
+    n = {
       id: noteId,
       folderId: state.editingNoteFolderParentId || null,
       title: "Голосовая заметка",
       text: "",
       color: "default",
-      voice: { data: dataUrl, mime: mime || "audio/webm", at: nowIso() },
+      voices: [item],
       createdAt: nowIso(),
       updatedAt: nowIso(),
-    });
+    };
+    state.notes.unshift(n);
   } else {
-    n.voice = { data: dataUrl, mime: mime || "audio/webm", at: nowIso() };
+    const list = noteVoices(n);
+    list.push(item);
+    n.voices = list;
+    delete n.voice;
     n.updatedAt = nowIso();
-    if (!n.title) n.title = "Голосовая заметка";
+    if (!n.title || n.title === "Заметка") n.title = "Голосовая заметка";
   }
   saveState();
   render();
-  toast("Голос сохранён — плеер ниже в заметке");
+  toast("Голосовая запись #" + noteVoices(n).length + " сохранена");
   renderVoicePlayer(noteId);
-  const play = document.getElementById("btn-voice-play");
-  const delv = document.getElementById("btn-voice-delete");
-  if (play) play.hidden = false;
-  if (delv) delv.hidden = true; // shown inside player
 }
 
 function updateVoiceUI(recording) {
@@ -1400,17 +1433,18 @@ function playVoiceNote(noteId, btn) {
 
 function deleteVoiceNote(noteId) {
   const n = (state.notes || []).find((x) => x.id === noteId);
-  if (!n || !n.voice) return;
+  if (!n || !noteVoices(n).length) return;
   confirmAction(
-    "Удалить голосовую запись?",
-    "Аудио будет стёрто из этой заметки. Уверены?",
+    "Удалить все голосовые записи?",
+    "Все аудио в этой заметке будут стёрты. Уверены?",
     () => {
       delete n.voice;
+      n.voices = [];
       n.updatedAt = nowIso();
       saveState();
       render();
       renderVoicePlayer(noteId);
-      toast("Голосовая запись удалена");
+      toast("Голосовые записи удалены");
     }
   );
 }
@@ -2376,7 +2410,11 @@ async function syncPull(opts = {}) {
             ...winner,
             color: winner.color || withText.color || "default",
             pinned: !!(winner.pinned || withText.pinned),
-            voice: winner.voice || withText.voice || null,
+            voices: [
+              ...noteVoices(withText),
+              ...noteVoices(winner),
+            ].filter((v, i, arr) => v && v.data && arr.findIndex((x) => x.data === v.data) === i),
+            voice: null,
             title: winner.title && winner.title !== "Заметка" ? winner.title : withText.title,
             text: withText.text || winner.text || "",
           });
@@ -3348,8 +3386,8 @@ loadAppConfig().then(() => applyHashCredentials());
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.30 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.30");
+    if (el) el.textContent = "Сборка 2026.10.08.31 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.31");
   } catch (_) {}
 })();
 

@@ -2300,3 +2300,27 @@ img {
   border-color: var(--danger);
   color: #fff;
 }
+
+
+.voice-row-item {
+  padding: 10px 0;
+  border-top: 1px solid rgba(26, 22, 18, 0.08);
+}
+
+.voice-row-item:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.voice-row-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  margin-bottom: 6px;
+  color: var(--ink);
+}
+
+.voice-row-del {
+  margin-top: 6px;
+  height: 32px;
+  font-size: 0.8rem;
+}

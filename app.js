@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.22";
+const APP_BUILD = "2026.10.08.23";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -2340,6 +2340,37 @@ window.__ytkSync = function () {
   if (typeof syncAll === "function") syncAll();
 };
 
+function openModal(id) {
+  document.getElementById(id).hidden = false;
+  document.body.style.overflow = "hidden";
+}
+
+
+function closeModal(id) {
+  document.getElementById(id).hidden = true;
+  if (![...document.querySelectorAll(".modal")].some((m) => !m.hidden)) {
+    document.body.style.overflow = "";
+  }
+}
+
+
+function renderColorPicks(containerId, colors, selectedId, onPick) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = colors
+    .map((c) => {
+      const id = typeof c === "string" ? c : c.id;
+      const bg = typeof c === "string" ? c : c.bg;
+      return `<button type="button" class="color-swatch ${id === selectedId ? "is-selected" : ""}" data-color="${id}" style="background:${bg}" aria-label="Цвет ${id}"></button>`;
+    })
+    .join("");
+  el.onclick = (e) => {
+    const btn = e.target.closest("[data-color]");
+    if (!btn) return;
+    onPick(btn.dataset.color);
+  };
+}
+
+
 function bindEvents() {
   // filters
   document.getElementById("nav").addEventListener("click", (e) => {
@@ -2937,8 +2968,8 @@ loadAppConfig().then(() => applyHashCredentials());
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.22 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.22");
+    if (el) el.textContent = "Сборка 2026.10.08.23 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.23");
   } catch (_) {}
 })();
 

@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.36";
+const APP_BUILD = "2026.10.08.37";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -272,7 +272,7 @@ function saveState(options = {}) {
   if (options.sync !== false) scheduleAutoSync();
 }
 
-function loadAppConfig() {
+async function loadAppConfig() {
   try {
     const res = await fetch("config.json", { cache: "no-cache" });
     if (!res.ok) return;
@@ -3680,8 +3680,8 @@ loadAppConfig().then(() => applyHashCredentials());
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.36 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.36");
+    if (el) el.textContent = "Сборка 2026.10.08.37 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.37");
   } catch (_) {}
 })();
 

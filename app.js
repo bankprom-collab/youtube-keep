@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.31";
+const APP_BUILD = "2026.10.08.32";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -1201,113 +1201,52 @@ const KEEP_SWATCHES = [
 ];
 
 
-/* ===== Voice notes ===== */
+/* ===== Voice notes (simple sequential) ===== */
 const voiceState = {
   recorder: null,
   chunks: [],
   noteId: null,
   recording: false,
   startedAt: 0,
+  timer: null,
 };
 
-async function startVoiceRecord(noteId) {
-  if (voiceState.recording) return;
+function stopAllPlayback() {
   try {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      toast("Микрофон не поддерживается в этом браузере");
-      return;
-    }
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const mime = MediaRecorder.isTypeSupported("audio/webm")
-      ? "audio/webm"
-      : MediaRecorder.isTypeSupported("audio/mp4")
-        ? "audio/mp4"
-        : MediaRecorder.isTypeSupported("audio/ogg")
-          ? "audio/ogg"
-          : "";
-    let rec;
-    try {
-      rec = new MediaRecorder(
-        stream,
-        mime
-          ? {
-              mimeType: mime,
-              audioBitsPerSecond: 16000,
-            }
-          : { audioBitsPerSecond: 16000 }
-      );
-    } catch (_) {
+    document.querySelectorAll("audio").forEach((a) => {
+      a.pause();
       try {
-        rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
-      } catch (__) {
-        rec = new MediaRecorder(stream);
-      }
+        a.currentTime = 0;
+      } catch (_) {}
+    });
+    if (window.__ytkAudio) {
+      window.__ytkAudio.pause();
     }
-    voiceState.chunks = [];
-    voiceState.noteId = noteId;
-    voiceState.recorder = rec;
-    voiceState.recording = true;
-    voiceState.startedAt = Date.now();
-    rec.ondataavailable = (e) => {
-      if (e.data && e.data.size) voiceState.chunks.push(e.data);
-    };
-    rec.onstop = async () => {
-      stream.getTracks().forEach((tr) => tr.stop());
-      const blob = new Blob(voiceState.chunks, { type: rec.mimeType || "audio/webm" });
-      voiceState.recording = false;
-      voiceState.recorder = null;
-      if (!voiceState.noteId || blob.size < 200) return;
-      if (blob.size > 8 * 1024 * 1024) {
-        toast("Запись слишком большая (лимит 8 МБ). Попробуйте короче.");
-        return;
-      }
-      const dataUrl = await blobToDataUrl(blob);
-      attachVoiceToNote(voiceState.noteId, dataUrl, rec.mimeType || "audio/webm");
-    };
-    rec.start(1000);
-    updateVoiceUI(true);
-    if (voiceState.timer) clearInterval(voiceState.timer);
-    voiceState.timer = setInterval(() => {
-      const s = Math.floor((Date.now() - voiceState.startedAt) / 1000);
-      const mm = String(Math.floor(s / 60)).padStart(2, "0");
-      const ss = String(s % 60).padStart(2, "0");
-      const bar = document.getElementById("voice-status");
-      if (bar) {
-        bar.hidden = false;
-        bar.textContent = "Запись " + mm + ":" + ss + " (можно долго)";
-      }
-    }, 500);
-    toast("Запись… Нажмите «Стоп»");
-  } catch (err) {
-    const msg = String((err && err.name) || err.message || err);
-    if (/NotAllowed|Permission|Security/i.test(msg)) {
-      toast("Нет доступа к микрофону. Разрешите в браузере и повторите.");
-    } else if (/NotFound|Devices/i.test(msg)) {
-      toast("Микрофон не найден");
-    } else {
-      toast("Не удалось начать запись: " + msg);
-    }
-  }
+  } catch (_) {}
 }
 
-function stopVoiceRecord() {
-  if (voiceState.timer) clearInterval(voiceState.timer);
-  voiceState.timer = null;
-  if (voiceState.recorder && voiceState.recording) {
-    try {
-      voiceState.recorder.stop();
-    } catch (_) {}
-  }
-  voiceState.recording = false;
-  updateVoiceUI(false);
+function noteVoices(note) {
+  if (!note) return [];
+  if (Array.isArray(note.voices) && note.voices.length) return note.voices.filter((v) => v && v.data);
+  if (note.voice && note.voice.data) return [note.voice];
+  return [];
 }
 
-function blobToDataUrl(blob) {
-  return new Promise((resolve) => {
-    const fr = new FileReader();
-    fr.onload = () => resolve(fr.result);
-    fr.readAsDataURL(blob);
-  });
+function ensureNoteForVoice(noteId) {
+  let n = (state.notes || []).find((x) => x.id === noteId);
+  if (n) return n;
+  n = {
+    id: noteId,
+    folderId: state.editingNoteFolderParentId || currentNotesFolderId() || null,
+    title: "Голосовая заметка",
+    text: "",
+    color: "default",
+    voices: [],
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+  };
+  state.notes.unshift(n);
+  return n;
 }
 
 function renderVoicePlayer(noteId) {
@@ -1321,77 +1260,231 @@ function renderVoicePlayer(noteId) {
     return;
   }
   box.hidden = false;
-  box.innerHTML = `
-    <div class="voice-player-inner">
-      <div class="voice-player-label">Голосовые записи (${list.length})</div>
-      ${list
-        .map(
-          (v, i) => `
-        <div class="voice-row-item">
-          <div class="voice-row-title">Запись №${i + 1} · ${new Date(v.at || Date.now()).toLocaleString("ru-RU")}</div>
-          <audio controls class="voice-audio" src="${v.data}"></audio>
-          <button type="button" class="ghost-btn voice-row-del" data-voice-idx="${i}">Удалить эту запись</button>
-        </div>`
-        )
-        .join("")}
-    </div>`;
-  box.querySelectorAll("[data-voice-idx]").forEach((btn) => {
-    btn.addEventListener("click", () => {
+  box.innerHTML =
+    '<div class="voice-player-inner">' +
+    '<div class="voice-player-label">Голосовые записи (' + list.length + ")</div>" +
+    list
+      .map(function (v, i) {
+        return (
+          '<div class="voice-row-item" data-voice-row="' +
+          i +
+          '">' +
+          '<div class="voice-row-title">Запись №' +
+          (i + 1) +
+          "</div>" +
+          '<audio controls class="voice-audio" src="' +
+          v.data +
+          '"></audio>' +
+          '<button type="button" class="ghost-btn voice-row-del" data-voice-idx="' +
+          i +
+          '">Удалить №' +
+          (i + 1) +
+          "</button>" +
+          "</div>"
+        );
+      })
+      .join("") +
+    "</div>";
+
+  box.querySelectorAll("[data-voice-idx]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
       const idx = parseInt(btn.getAttribute("data-voice-idx"), 10);
-      confirmAction("Удалить голосовую запись?", `Запись №${idx + 1} будет стёрта. Уверены?`, () => {
-        const arr = noteVoices(n);
+      confirmAction("Удалить запись №" + (idx + 1) + "?", "Эта голосовая запись будет стёрта.", function () {
+        const n2 = (state.notes || []).find((x) => x.id === noteId);
+        if (!n2) return;
+        const arr = noteVoices(n2);
         arr.splice(idx, 1);
-        n.voices = arr;
-        delete n.voice;
-        n.updatedAt = nowIso();
+        n2.voices = arr;
+        n2.updatedAt = nowIso();
         saveState();
         render();
         renderVoicePlayer(noteId);
-        toast("Запись удалена");
+        toast("Запись №" + (idx + 1) + " удалена");
       });
     });
   });
 }
 
-function noteVoices(note) {
-  if (!note) return [];
-  if (Array.isArray(note.voices) && note.voices.length) return note.voices;
-  if (note.voice && note.voice.data) return [note.voice];
-  return [];
-}
+async function startVoiceRecord(noteId) {
+  if (voiceState.recording) {
+    toast("Запись уже идёт");
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    toast("Микрофон не поддерживается в этом браузере");
+    return;
+  }
 
-function attachVoiceToNote(noteId, dataUrl, mime) {
-  let n = (state.notes || []).find((x) => x.id === noteId);
-  const item = {
-    id: uid(),
-    data: dataUrl,
-    mime: mime || "audio/webm",
-    at: nowIso(),
+  // kill echo: stop playback before rec
+  stopAllPlayback();
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+  } catch (err) {
+    toast("Нет доступа к микрофону. Разрешите запись звука в браузере.");
+    return;
+  }
+
+  const mime = MediaRecorder.isTypeSupported("audio/webm")
+    ? "audio/webm"
+    : MediaRecorder.isTypeSupported("audio/mp4")
+      ? "audio/mp4"
+      : "";
+  let rec;
+  try {
+    rec = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 32000 } : undefined);
+  } catch (_) {
+    try {
+      rec = new MediaRecorder(stream);
+    } catch (__) {
+      stream.getTracks().forEach((t) => t.stop());
+      toast("Не удалось запустить запись");
+      return;
+    }
+  }
+
+  // bind this recording to a stable note
+  const id = noteId || state.editingNoteId || uid();
+  state.editingNoteId = id;
+  ensureNoteForVoice(id);
+
+  voiceState.chunks = [];
+  voiceState.noteId = id;
+  voiceState.recorder = rec;
+  voiceState.recording = true;
+  voiceState.startedAt = Date.now();
+
+  rec.ondataavailable = function (e) {
+    if (e.data && e.data.size) voiceState.chunks.push(e.data);
   };
-  if (!n) {
-    n = {
-      id: noteId,
-      folderId: state.editingNoteFolderParentId || null,
-      title: "Голосовая заметка",
-      text: "",
-      color: "default",
-      voices: [item],
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-    };
-    state.notes.unshift(n);
-  } else {
-    const list = noteVoices(n);
-    list.push(item);
-    n.voices = list;
+
+  rec.onstop = async function () {
+    try {
+      stream.getTracks().forEach(function (tr) {
+        tr.stop();
+      });
+    } catch (_) {}
+    const blob = new Blob(voiceState.chunks, { type: rec.mimeType || "audio/webm" });
+    voiceState.recording = false;
+    voiceState.recorder = null;
+    if (voiceState.timer) clearInterval(voiceState.timer);
+    updateVoiceUI(false);
+
+    if (!voiceState.noteId) return;
+    if (!blob.size || blob.size < 80) {
+      toast("Запись пустая — попробуйте ещё раз");
+      return;
+    }
+    if (blob.size > 8 * 1024 * 1024) {
+      toast("Запись слишком большая");
+      return;
+    }
+
+    const dataUrl = await blobToDataUrl(blob);
+    const n = ensureNoteForVoice(voiceState.noteId);
+    const arr = noteVoices(n);
+    arr.push({ id: uid(), data: dataUrl, mime: rec.mimeType || "audio/webm", at: nowIso() });
+    n.voices = arr;
     delete n.voice;
     n.updatedAt = nowIso();
     if (!n.title || n.title === "Заметка") n.title = "Голосовая заметка";
+    saveState();
+    render();
+    renderVoicePlayer(voiceState.noteId);
+    toast("Сохранено: запись №" + arr.length);
+    // keep editor in sync
+    const titleInp = document.getElementById("note-store-name");
+    if (titleInp && state.editingNoteId === voiceState.noteId && !titleInp.value) {
+      titleInp.value = n.title;
+    }
+  };
+
+  try {
+    rec.start(500);
+  } catch (_) {
+    try {
+      rec.start();
+    } catch (__) {
+      stream.getTracks().forEach(function (t) {
+        t.stop();
+      });
+      toast("Не удалось начать запись");
+      return;
+    }
   }
-  saveState();
-  render();
-  toast("Голосовая запись #" + noteVoices(n).length + " сохранена");
-  renderVoicePlayer(noteId);
+
+  updateVoiceUI(true);
+  if (voiceState.timer) clearInterval(voiceState.timer);
+  voiceState.timer = setInterval(function () {
+    const s = Math.floor((Date.now() - voiceState.startedAt) / 1000);
+    const mm = String(Math.floor(s / 60)).padStart(2, "0");
+    const ss = String(s % 60).padStart(2, "0");
+    const bar = document.getElementById("voice-status");
+    if (bar) {
+      bar.hidden = false;
+      bar.className = "hint is-err";
+      bar.textContent = "Запись " + mm + ":" + ss + " … Нажмите «Стоп»";
+    }
+  }, 400);
+  toast("Запись начата");
+}
+
+function stopVoiceRecord() {
+  if (voiceState.timer) {
+    clearInterval(voiceState.timer);
+    voiceState.timer = null;
+  }
+  if (voiceState.recorder && voiceState.recording) {
+    try {
+      voiceState.recorder.stop();
+    } catch (_) {}
+  } else {
+    voiceState.recording = false;
+    updateVoiceUI(false);
+  }
+}
+
+function blobToDataUrl(blob) {
+  return new Promise(function (resolve) {
+    const fr = new FileReader();
+    fr.onload = function () {
+      resolve(fr.result);
+    };
+    fr.readAsDataURL(blob);
+  });
+}
+
+function playVoiceNote(noteId, btn) {
+  const n = (state.notes || []).find((x) => x.id === noteId);
+  const list = noteVoices(n);
+  if (!list.length) return;
+  stopAllPlayback();
+  const a = new Audio(list[list.length - 1].data);
+  window.__ytkAudio = a;
+  a.play().catch(function () {
+    toast("Не удалось воспроизвести");
+  });
+}
+
+function deleteVoiceNote(noteId) {
+  const n = (state.notes || []).find((x) => x.id === noteId);
+  if (!n || !noteVoices(n).length) return;
+  confirmAction("Удалить все голосовые записи?", "Все аудио этой заметки будут стёрты.", function () {
+    n.voices = [];
+    delete n.voice;
+    n.updatedAt = nowIso();
+    saveState();
+    render();
+    renderVoicePlayer(noteId);
+    toast("Голосовые записи удалены");
+  });
 }
 
 function updateVoiceUI(recording) {
@@ -1400,53 +1493,17 @@ function updateVoiceUI(recording) {
   const bar = document.getElementById("voice-status");
   if (recBtn) {
     recBtn.hidden = recording;
-    recBtn.classList.toggle("is-recording", recording);
   }
   if (stopBtn) stopBtn.hidden = !recording;
   if (bar) {
     bar.hidden = false;
     if (recording) {
       bar.className = "hint is-err";
-      bar.textContent = "Идёт запись голоса… Нажмите «Стоп»";
-    } else {
+    } else if (!noteVoices((state.notes || []).find((x) => x.id === state.editingNoteId)).length) {
       bar.className = "hint";
+      bar.textContent = "Нажмите «Записать голос» → говорите → «Стоп». Каждая запись — новая строка.";
     }
   }
-}
-
-function playVoiceNote(noteId, btn) {
-  const n = (state.notes || []).find((x) => x.id === noteId);
-  if (!n?.voice?.data) return;
-  try {
-    const a = new Audio(n.voice.data);
-    a.play().catch(() => toast("Не удалось воспроизвести"));
-    if (btn) {
-      btn.textContent = "…";
-      a.onended = () => {
-        btn.textContent = "Слушать";
-      };
-    }
-  } catch (_) {
-    toast("Аудио недоступно");
-  }
-}
-
-function deleteVoiceNote(noteId) {
-  const n = (state.notes || []).find((x) => x.id === noteId);
-  if (!n || !noteVoices(n).length) return;
-  confirmAction(
-    "Удалить все голосовые записи?",
-    "Все аудио в этой заметке будут стёрты. Уверены?",
-    () => {
-      delete n.voice;
-      n.voices = [];
-      n.updatedAt = nowIso();
-      saveState();
-      render();
-      renderVoicePlayer(noteId);
-      toast("Голосовые записи удалены");
-    }
-  );
 }
 
 function openNoteStoreModal(noteId = null, folderId = null) {
@@ -3195,6 +3252,14 @@ function bindEvents() {
   document.getElementById("btn-save-note")?.addEventListener("click", saveNoteFromModal);
   document.getElementById("btn-voice-record")?.addEventListener("click", (e) => {
     e.preventDefault();
+    stopAllPlayback();
+    if (!state.editingNoteId) {
+      // open note context if needed
+      const inp = document.getElementById("note-store-name");
+      if (!inp || !document.getElementById("modal-note-store") || document.getElementById("modal-note-store").hidden) {
+        openNoteStoreModal(null, currentNotesFolderId());
+      }
+    }
     const id = state.editingNoteId || uid();
     state.editingNoteId = id;
     startVoiceRecord(id);
@@ -3386,8 +3451,8 @@ loadAppConfig().then(() => applyHashCredentials());
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.31 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.31");
+    if (el) el.textContent = "Сборка 2026.10.08.32 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.32");
   } catch (_) {}
 })();
 

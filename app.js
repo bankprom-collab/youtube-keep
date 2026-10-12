@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.34";
+const APP_BUILD = "2026.10.08.36";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -231,32 +231,48 @@ function loadState() {
 }
 
 function saveState(options = {}) {
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      version: 2,
-      links: state.links,
-      categories: state.categories,
-      deletedCategoryIds: state.deletedCategoryIds || [],
-      noteFolders: state.noteFolders || [],
-      notes: state.notes || [],
-      deletedNoteFolderIds: state.deletedNoteFolderIds || [],
-      deletedNoteIds: state.deletedNoteIds || [],
-      noteFolders: state.noteFolders || [],
-      notes: state.notes || [],
-      deletedNoteFolderIds: state.deletedNoteFolderIds || [],
-      deletedNoteIds: state.deletedNoteIds || [],
-    })
-  );
+  try {
+    const notesLite = (state.notes || []).map(function (n) {
+      const c = Object.assign({}, n);
+      if (n.voices) {
+        c.voices = n.voices.map(function (v) {
+          return { id: v.id, ref: v.ref || v.id, name: v.name, at: v.at, mime: v.mime, data: "" };
+        });
+      }
+      if (n.voice && n.voice.data) {
+        c.voice = {
+          id: n.voice.id || n.voice.ref || uid(),
+          ref: n.voice.ref || n.voice.id,
+          name: n.voice.name,
+          at: n.voice.at,
+          mime: n.voice.mime,
+          data: "",
+        };
+      }
+      return c;
+    });
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        version: 2,
+        links: state.links,
+        categories: state.categories,
+        deletedCategoryIds: state.deletedCategoryIds || [],
+        noteFolders: state.noteFolders || [],
+        notes: notesLite,
+        deletedNoteFolderIds: state.deletedNoteFolderIds || [],
+        deletedNoteIds: state.deletedNoteIds || [],
+      })
+    );
+  } catch (e) {
+    if (/quota/i.test(String(e && e.name) + String(e))) {
+      toast("Место в браузере закончилось — удалите старые аудио");
+    }
+  }
   if (options.sync !== false) scheduleAutoSync();
 }
 
-const appConfig = {
-  gistId: "",
-  tokenUrl: "https://github.com/settings/tokens/new?scopes=gist&description=YouTube%20Keep",
-};
-
-async function loadAppConfig() {
+function loadAppConfig() {
   try {
     const res = await fetch("config.json", { cache: "no-cache" });
     if (!res.ok) return;
@@ -436,6 +452,17 @@ function parseTagsInput(value) {
     .filter(Boolean);
 }
 
+
+async function hydrateKeepCards() {
+  const items = (state.notes || []).filter(function (n) {
+    return state.filter === "notes:all" || state.filter === "notes:" + (n.folderId || "") || String(state.filter).startsWith("notes:");
+  });
+  for (const n of items) {
+    await refreshVoiceCache(n.id);
+  }
+  // re-render only cards audio src if needed — simplest: render again once
+  renderNotesView();
+}
 
 function render() {
   const buildEl = document.getElementById("build-label");
@@ -1201,7 +1228,89 @@ const KEEP_SWATCHES = [
 ];
 
 
-/* ===== Voice notes ===== */
+/* ===== Voice notes (IndexedDB storage) ===== */
+function idbOpen() {
+  return new Promise(function (resolve, reject) {
+    const req = indexedDB.open("youtube-keep-voice", 1);
+    req.onupgradeneeded = function () {
+      const db = req.result;
+      if (!db.objectStoreNames.contains("voice")) {
+        db.createObjectStore("voice", { keyPath: "id" });
+      }
+    };
+    req.onsuccess = function () {
+      resolve(req.result);
+    };
+    req.onerror = function () {
+      reject(req.error);
+    };
+  });
+}
+
+async function idbPut(id, dataUrl, meta) {
+  const db = await idbOpen();
+  return new Promise(function (resolve, reject) {
+    const tx = db.transaction("voice", "readwrite");
+    tx.objectStore("voice").put(
+      Object.assign({ id: id, data: dataUrl }, meta || {})
+    );
+    tx.oncomplete = function () {
+      resolve(id);
+    };
+    tx.onerror = function () {
+      reject(tx.error);
+    };
+  });
+}
+
+async function idbGet(id) {
+  const db = await idbOpen();
+  return new Promise(function (resolve) {
+    const tx = db.transaction("voice", "readonly");
+    const req = tx.objectStore("voice").get(id);
+    req.onsuccess = function () {
+      resolve(req.result || null);
+    };
+    req.onerror = function () {
+      resolve(null);
+    };
+  });
+}
+
+async function hydrateVoices(note) {
+  if (!note) return [];
+  const list = Array.isArray(note.voices) ? note.voices : note.voice ? [note.voice] : [];
+  const out = [];
+  for (const v of list) {
+    if (!v) continue;
+    if (v.data) {
+      out.push(v);
+    } else if (v.ref || v.id) {
+      const rec = await idbGet(v.ref || v.id);
+      if (rec && rec.data) {
+        out.push(Object.assign({}, v, { data: rec.data }));
+      }
+    }
+  }
+  return out;
+}
+
+const voiceCache = {}; /* noteId -> hydrated list */
+
+async function refreshVoiceCache(noteId) {
+  const n = (state.notes || []).find(function (x) {
+    return x.id === noteId;
+  });
+  if (!n) {
+    voiceCache[noteId] = [];
+    return [];
+  }
+  const list = await hydrateVoices(n);
+  voiceCache[noteId] = list;
+  return list;
+}
+
+
 const voiceState = {
   recorder: null,
   chunks: [],
@@ -1244,10 +1353,14 @@ function stopAllPlayback() {
 
 function noteVoices(note) {
   if (!note) return [];
-  if (Array.isArray(note.voices)) return note.voices.filter(function (v) {
-    return v && v.data;
-  });
-  if (note.voice && note.voice.data) return [note.voice];
+  const cached = voiceCache[note.id];
+  if (cached && cached.length) return cached;
+  if (Array.isArray(note.voices)) {
+    return note.voices.filter(function (v) {
+      return v && (v.data || v.ref || v.id);
+    });
+  }
+  if (note.voice) return [note.voice];
   return [];
 }
 
@@ -1274,13 +1387,13 @@ function voiceLabel(v, i) {
   return v.name || "Запись №" + (i + 1);
 }
 
-function renderVoicePlayer(noteId) {
+async function renderVoicePlayer(noteId) {
   const box = document.getElementById("voice-player");
   const n = (state.notes || []).find(function (x) {
     return x.id === noteId;
   });
   if (!box) return;
-  const list = noteVoices(n);
+  const list = await refreshVoiceCache(noteId);
   if (!list.length) {
     box.hidden = true;
     box.innerHTML = "";
@@ -1470,21 +1583,31 @@ async function startVoiceRecord(noteId) {
     const dataUrl = await blobToDataUrl(blob);
     const targetId = voiceState.noteId;
     const n = ensureNoteForVoice(targetId);
-    const arr = noteVoices(n);
+    const arr = noteVoices(n).slice();
     const num = arr.length + 1;
-    arr.push({
-      id: uid(),
+    const clipId = uid();
+    try {
+      await idbPut(clipId, dataUrl, { mime: rec.mimeType || "audio/webm", at: nowIso() });
+    } catch (e) {
+      toast("Не удалось сохранить аудио: " + e.message);
+    }
+    const clip = {
+      id: clipId,
+      ref: clipId,
       data: dataUrl,
       mime: rec.mimeType || "audio/webm",
       at: nowIso(),
       name: "Запись №" + num,
+    };
+    arr.push(clip);
+    voiceCache[targetId] = arr;
+    n.voices = arr.map(function (v) {
+      return { id: v.id, ref: v.ref || v.id, name: v.name, at: v.at, mime: v.mime, data: "" };
     });
-    n.voices = arr;
     delete n.voice;
     n.updatedAt = nowIso();
     if (!n.title || n.title === "Заметка") n.title = "Голосовая заметка";
     saveState();
-    // do NOT full-render here — keeps modal & note id stable for clip #2
     renderVoicePlayer(targetId);
     const bar = document.getElementById("voice-status");
     if (bar) {
@@ -1562,15 +1685,20 @@ function blobToDataUrl(blob) {
   });
 }
 
-function playVoiceNote(noteId) {
-  const n = (state.notes || []).find(function (x) {
-    return x.id === noteId;
-  });
-  const list = noteVoices(n);
-  if (!list.length) return;
+async function playVoiceNote(noteId) {
+  const list = await refreshVoiceCache(noteId);
+  if (!list.length) {
+    toast("В этой заметке нет голосовых записей");
+    return;
+  }
   stopAllPlayback();
   muteAllAudio(false);
-  const a = new Audio(list[list.length - 1].data);
+  const last = list[list.length - 1];
+  if (!last.data) {
+    toast("Аудио не найдено в хранилище");
+    return;
+  }
+  const a = new Audio(last.data);
   window.__ytkAudio = a;
   a.play().catch(function () {
     toast("Не удалось воспроизвести");
@@ -3552,8 +3680,8 @@ loadAppConfig().then(() => applyHashCredentials());
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.34 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.34");
+    if (el) el.textContent = "Сборка 2026.10.08.36 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.36");
   } catch (_) {}
 })();
 

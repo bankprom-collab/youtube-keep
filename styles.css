@@ -2357,3 +2357,9 @@ img {
   font-size: 0.88rem;
   font-weight: 650;
 }
+
+
+.voice-big-btn {
+  position: relative;
+  z-index: 2;
+}

@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.33";
+const APP_BUILD = "2026.10.08.34";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -1364,10 +1364,14 @@ function renderVoicePlayer(noteId) {
 }
 
 async function startVoiceRecord(noteId) {
-  if (voiceState.recording) {
-    toast("Запись уже идёт — нажмите Стоп");
+  if (voiceState.recording || voiceState.busy) {
+    toast("Подождите секунду — предыдущая запись сохраняется");
     return;
   }
+  voiceState.busy = true;
+  setTimeout(function () {
+    voiceState.busy = false;
+  }, 350);
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     toast("Микрофон не поддерживается");
     return;
@@ -1443,6 +1447,11 @@ async function startVoiceRecord(noteId) {
     voiceState.recorder = null;
     if (voiceState.timer) clearInterval(voiceState.timer);
     updateVoiceUI(false);
+    // ensure record button is visible again for clip #2
+    const rb = document.getElementById("btn-voice-record");
+    const sb = document.getElementById("btn-voice-stop");
+    if (rb) rb.hidden = false;
+    if (sb) sb.hidden = true;
     // small delay so mic device fully released (reduces echo on next take)
     setTimeout(function () {
       muteAllAudio(false);
@@ -1459,7 +1468,8 @@ async function startVoiceRecord(noteId) {
     }
 
     const dataUrl = await blobToDataUrl(blob);
-    const n = ensureNoteForVoice(voiceState.noteId);
+    const targetId = voiceState.noteId;
+    const n = ensureNoteForVoice(targetId);
     const arr = noteVoices(n);
     const num = arr.length + 1;
     arr.push({
@@ -1474,9 +1484,21 @@ async function startVoiceRecord(noteId) {
     n.updatedAt = nowIso();
     if (!n.title || n.title === "Заметка") n.title = "Голосовая заметка";
     saveState();
-    render();
-    renderVoicePlayer(voiceState.noteId);
-    toast("Готово: Запись №" + num);
+    // do NOT full-render here — keeps modal & note id stable for clip #2
+    renderVoicePlayer(targetId);
+    const bar = document.getElementById("voice-status");
+    if (bar) {
+      bar.hidden = false;
+      bar.className = "hint is-ok";
+      bar.textContent = "Сохранено записей: " + arr.length + ". Можно записать следующую.";
+    }
+    toast("Готово: Запись №" + num + " (всего " + arr.length + ")");
+    // refresh board later without destroying editor
+    clearTimeout(voiceState.renderTimer);
+    voiceState.renderTimer = setTimeout(function () {
+      render();
+      renderVoicePlayer(targetId);
+    }, 400);
   };
 
   try {
@@ -3328,17 +3350,20 @@ function bindEvents() {
   document.getElementById("btn-save-note")?.addEventListener("click", saveNoteFromModal);
   document.getElementById("btn-voice-record")?.addEventListener("click", (e) => {
     e.preventDefault();
+    e.stopPropagation();
     stopAllPlayback();
-    if (!state.editingNoteId) {
-      // open note context if needed
-      const inp = document.getElementById("note-store-name");
-      if (!inp || !document.getElementById("modal-note-store") || document.getElementById("modal-note-store").hidden) {
-        openNoteStoreModal(null, currentNotesFolderId());
-      }
+    const modal = document.getElementById("modal-note-store");
+    if (modal && modal.hidden) {
+      openNoteStoreModal(state.editingNoteId || null, currentNotesFolderId());
     }
     const id = state.editingNoteId || uid();
     state.editingNoteId = id;
     startVoiceRecord(id);
+  });
+  document.getElementById("btn-voice-stop")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    stopVoiceRecord();
   });
   document.getElementById("btn-voice-stop")?.addEventListener("click", (e) => {
     e.preventDefault();
@@ -3527,8 +3552,8 @@ loadAppConfig().then(() => applyHashCredentials());
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.33 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.33");
+    if (el) el.textContent = "Сборка 2026.10.08.34 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.34");
   } catch (_) {}
 })();
 

@@ -2262,3 +2262,41 @@ img {
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.45);
 }
+
+
+.voice-block {
+  margin-top: 4px;
+  padding: 12px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-soft);
+}
+
+.voice-big {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 8px 0;
+}
+
+.voice-big-btn {
+  height: 44px;
+  padding: 0 20px;
+  border-radius: 999px;
+  border: 1.5px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 750;
+  font-size: 0.95rem;
+}
+
+.voice-big-btn:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.voice-big-btn.is-recording {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}

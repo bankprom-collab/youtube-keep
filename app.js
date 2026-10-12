@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.29";
+const APP_BUILD = "2026.10.08.30";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -1353,7 +1353,7 @@ function attachVoiceToNote(noteId, dataUrl, mime) {
   }
   saveState();
   render();
-  toast("Голосовая запись сохранена в заметку");
+  toast("Голос сохранён — плеер ниже в заметке");
   renderVoicePlayer(noteId);
   const play = document.getElementById("btn-voice-play");
   const delv = document.getElementById("btn-voice-delete");
@@ -1367,12 +1367,17 @@ function updateVoiceUI(recording) {
   const bar = document.getElementById("voice-status");
   if (recBtn) {
     recBtn.hidden = recording;
-    recBtn.textContent = recording ? "Запись…" : "Голос";
+    recBtn.classList.toggle("is-recording", recording);
   }
   if (stopBtn) stopBtn.hidden = !recording;
   if (bar) {
-    bar.hidden = !recording;
-    bar.textContent = recording ? "Идёт запись…" : "";
+    bar.hidden = false;
+    if (recording) {
+      bar.className = "hint is-err";
+      bar.textContent = "Идёт запись голоса… Нажмите «Стоп»";
+    } else {
+      bar.className = "hint";
+    }
   }
 }
 
@@ -1395,12 +1400,19 @@ function playVoiceNote(noteId, btn) {
 
 function deleteVoiceNote(noteId) {
   const n = (state.notes || []).find((x) => x.id === noteId);
-  if (!n) return;
-  delete n.voice;
-  n.updatedAt = nowIso();
-  saveState();
-  render();
-  toast("Голосовая запись удалена");
+  if (!n || !n.voice) return;
+  confirmAction(
+    "Удалить голосовую запись?",
+    "Аудио будет стёрто из этой заметки. Уверены?",
+    () => {
+      delete n.voice;
+      n.updatedAt = nowIso();
+      saveState();
+      render();
+      renderVoicePlayer(noteId);
+      toast("Голосовая запись удалена");
+    }
+  );
 }
 
 function openNoteStoreModal(noteId = null, folderId = null) {
@@ -3043,11 +3055,18 @@ function bindEvents() {
     if (del && state.filter.startsWith("notes:")) {
       e.preventDefault();
       const id = del.getAttribute("data-note-del");
-      state.deletedNoteIds.push(id);
-      state.notes = state.notes.filter((n) => n.id !== id);
-      saveState();
-      render();
-      toast("Заметка удалена");
+      const n = state.notes.find((x) => x.id === id);
+      confirmAction(
+        "Удалить заметку?",
+        `«${n?.title || "Заметка"}» будет удалена. Уверены?`,
+        () => {
+          state.deletedNoteIds.push(id);
+          state.notes = state.notes.filter((x) => x.id !== id);
+          saveState();
+          render();
+          toast("Заметка удалена");
+        }
+      );
     }
   });
 
@@ -3214,12 +3233,20 @@ function bindEvents() {
 
   document.getElementById("btn-note-store-delete")?.addEventListener("click", () => {
     if (!state.editingNoteId) return;
-    state.deletedNoteIds.push(state.editingNoteId);
-    state.notes = state.notes.filter((n) => n.id !== state.editingNoteId);
-    saveState();
-    closeModal("modal-note-store");
-    render();
-    toast("Заметка удалена");
+    const id = state.editingNoteId;
+    const n = state.notes.find((x) => x.id === id);
+    confirmAction(
+      "Удалить заметку?",
+      `«${n?.title || "Заметка"}» будет удалена безвозвратно. Уверены?`,
+      () => {
+        state.deletedNoteIds.push(id);
+        state.notes = state.notes.filter((x) => x.id !== id);
+        saveState();
+        closeModal("modal-note-store");
+        render();
+        toast("Заметка удалена");
+      }
+    );
   });
 
   document.getElementById("form-note-folder")?.addEventListener("submit", (e) => {
@@ -3321,8 +3348,8 @@ loadAppConfig().then(() => applyHashCredentials());
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.29 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.29");
+    if (el) el.textContent = "Сборка 2026.10.08.30 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.30");
   } catch (_) {}
 })();
 

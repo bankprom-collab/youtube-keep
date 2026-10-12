@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.23";
+const APP_BUILD = "2026.10.08.24";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -1832,6 +1832,53 @@ function syncPayload() {
 }
 
 async function syncPush(opts = {}) {
+  // EMPTY_LOCAL_PROTECT: never wipe cloud with an empty library
+  try {
+    if (isCloudReady()) {
+      const res = await fetch(
+        `https://api.github.com/gists/${state.sync.gistId || appConfig.gistId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${state.sync.token || appConfig.token}`,
+            Accept: "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+          },
+        }
+      );
+      if (res.ok) {
+        const gist = await res.json();
+        const file = gist.files?.["youtube-keep.json"] || Object.values(gist.files || {})[0];
+        const remote = file?.content ? parseJsonSafe(file.content) : null;
+        const remoteLinks = (remote && remote.links) || [];
+        const localLinks = state.links || [];
+        if (!localLinks.length && remoteLinks.length) {
+          // adopt remote instead of overwriting
+          state.links = remoteLinks.map(normalizeLink);
+          if (Array.isArray(remote.categories) && remote.categories.length) {
+            state.categories = remote.categories;
+          }
+          if (Array.isArray(remote.notes) && remote.notes.length) {
+            state.notes = remote.notes;
+          }
+          if (Array.isArray(remote.noteFolders) && remote.noteFolders.length) {
+            state.noteFolders = remote.noteFolders;
+          }
+          saveState({ sync: false });
+          render();
+          if (!opts.silent) {
+            toast("Подтянул " + remoteLinks.length + " записей из облака");
+          }
+        }
+      }
+    }
+  } catch (_) {
+    /* ignore and continue push */
+  }
+
+  if (typeof parseJsonSafe !== "function") {
+    /* keep going */
+  }
+
   if (!state.sync.token) {
     setSyncMessage("Укажите GitHub token", true);
     openModal("modal-sync");
@@ -2968,8 +3015,8 @@ loadAppConfig().then(() => applyHashCredentials());
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.23 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.23");
+    if (el) el.textContent = "Сборка 2026.10.08.24 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.24");
   } catch (_) {}
 })();
 

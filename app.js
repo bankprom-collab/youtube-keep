@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.27";
+const APP_BUILD = "2026.10.08.28";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -1207,22 +1207,36 @@ const voiceState = {
 async function startVoiceRecord(noteId) {
   if (voiceState.recording) return;
   try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast("Микрофон не поддерживается в этом браузере");
+      return;
+    }
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const mime = MediaRecorder.isTypeSupported("audio/webm")
       ? "audio/webm"
       : MediaRecorder.isTypeSupported("audio/mp4")
         ? "audio/mp4"
-        : "";
-    const rec = new MediaRecorder(
-      stream,
-      mime
-        ? {
-            mimeType: mime,
-            audioBitsPerSecond: 16000,
-            videoBitsPerSecond: 0,
-          }
-        : { audioBitsPerSecond: 16000 }
-    );
+        : MediaRecorder.isTypeSupported("audio/ogg")
+          ? "audio/ogg"
+          : "";
+    let rec;
+    try {
+      rec = new MediaRecorder(
+        stream,
+        mime
+          ? {
+              mimeType: mime,
+              audioBitsPerSecond: 16000,
+            }
+          : { audioBitsPerSecond: 16000 }
+      );
+    } catch (_) {
+      try {
+        rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      } catch (__) {
+        rec = new MediaRecorder(stream);
+      }
+    }
     voiceState.chunks = [];
     voiceState.noteId = noteId;
     voiceState.recorder = rec;
@@ -1259,7 +1273,14 @@ async function startVoiceRecord(noteId) {
     }, 500);
     toast("Запись… Нажмите «Стоп»");
   } catch (err) {
-    toast("Нет доступа к микрофону");
+    const msg = String((err && err.name) || err.message || err);
+    if (/NotAllowed|Permission|Security/i.test(msg)) {
+      toast("Нет доступа к микрофону. Разрешите в браузере и повторите.");
+    } else if (/NotFound|Devices/i.test(msg)) {
+      toast("Микрофон не найден");
+    } else {
+      toast("Не удалось начать запись: " + msg);
+    }
   }
 }
 
@@ -2565,6 +2586,20 @@ document.addEventListener("click", function (e) {
       if (typeof syncAll === "function") syncAll();
       return;
     }
+    const vrec = e.target.closest("#btn-voice-record");
+    if (vrec) {
+      e.preventDefault();
+      const id = state.editingNoteId || uid();
+      state.editingNoteId = id;
+      if (typeof startVoiceRecord === "function") startVoiceRecord(id);
+      return;
+    }
+    const vstop = e.target.closest("#btn-voice-stop");
+    if (vstop) {
+      e.preventDefault();
+      if (typeof stopVoiceRecord === "function") stopVoiceRecord();
+      return;
+    }
     const menu = e.target.closest("#btn-menu");
     if (menu) {
       e.preventDefault();
@@ -3070,6 +3105,27 @@ function bindEvents() {
   document.getElementById("btn-connect-cloud").addEventListener("click", () => connectCloud());
   document.getElementById("btn-open-setup").addEventListener("click", openSyncModal);
   document.getElementById("btn-save-note")?.addEventListener("click", saveNoteFromModal);
+  document.getElementById("btn-voice-record")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    const id = state.editingNoteId || uid();
+    state.editingNoteId = id;
+    startVoiceRecord(id);
+  });
+  document.getElementById("btn-voice-stop")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    stopVoiceRecord();
+  });
+  document.getElementById("btn-voice-play")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    if (state.editingNoteId) playVoiceNote(state.editingNoteId);
+  });
+  document.getElementById("btn-voice-delete")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    if (state.editingNoteId) {
+      deleteVoiceNote(state.editingNoteId);
+      openNoteStoreModal(state.editingNoteId);
+    }
+  });
   document.getElementById("btn-delete-note")?.addEventListener("click", () => {
     const link = state.links.find((l) => l.id === state.editingLinkId);
     if (link) {
@@ -3234,8 +3290,8 @@ loadAppConfig().then(() => applyHashCredentials());
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.27 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.27");
+    if (el) el.textContent = "Сборка 2026.10.08.28 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.28");
   } catch (_) {}
 })();
 

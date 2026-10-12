@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.25";
+const APP_BUILD = "2026.10.08.26";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -1157,6 +1157,14 @@ function renderNotesView() {
             <div class="keep-card-text">${escapeHtml(n.text || "")}</div>
           </button>
           ${
+            n.voice?.data
+              ? `<div class="keep-card-voice">
+                   <button type="button" class="voice-play" data-note-voice-play="${n.id}">Слушать</button>
+                   <button type="button" class="voice-del" data-note-voice-del="${n.id}" title="Удалить аудио">×</button>
+                 </div>`
+              : ""
+          }
+          ${
             labelName
               ? `<div class="keep-card-label">${escapeHtml(labelName)}</div>`
               : ""
@@ -1186,6 +1194,142 @@ const KEEP_SWATCHES = [
   { id: "teal", bg: "#e0f7fa" },
 ];
 
+
+/* ===== Voice notes ===== */
+const voiceState = {
+  recorder: null,
+  chunks: [],
+  noteId: null,
+  recording: false,
+  startedAt: 0,
+};
+
+async function startVoiceRecord(noteId) {
+  if (voiceState.recording) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mime = MediaRecorder.isTypeSupported("audio/webm")
+      ? "audio/webm"
+      : MediaRecorder.isTypeSupported("audio/mp4")
+        ? "audio/mp4"
+        : "";
+    const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    voiceState.chunks = [];
+    voiceState.noteId = noteId;
+    voiceState.recorder = rec;
+    voiceState.recording = true;
+    voiceState.startedAt = Date.now();
+    rec.ondataavailable = (e) => {
+      if (e.data && e.data.size) voiceState.chunks.push(e.data);
+    };
+    rec.onstop = async () => {
+      stream.getTracks().forEach((tr) => tr.stop());
+      const blob = new Blob(voiceState.chunks, { type: rec.mimeType || "audio/webm" });
+      voiceState.recording = false;
+      voiceState.recorder = null;
+      if (!voiceState.noteId || blob.size < 200) return;
+      if (blob.size > 3.5 * 1024 * 1024) {
+        toast("Слишком длинная запись (макс. ~3 МБ). Сохранена не будет.");
+        return;
+      }
+      const dataUrl = await blobToDataUrl(blob);
+      attachVoiceToNote(voiceState.noteId, dataUrl, rec.mimeType || "audio/webm");
+    };
+    rec.start();
+    updateVoiceUI(true);
+    toast("Запись… Нажмите «Стоп»");
+  } catch (err) {
+    toast("Нет доступа к микрофону");
+  }
+}
+
+function stopVoiceRecord() {
+  if (voiceState.recorder && voiceState.recording) {
+    try {
+      voiceState.recorder.stop();
+    } catch (_) {}
+  }
+  voiceState.recording = false;
+  updateVoiceUI(false);
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.readAsDataURL(blob);
+  });
+}
+
+function attachVoiceToNote(noteId, dataUrl, mime) {
+  const n = (state.notes || []).find((x) => x.id === noteId);
+  if (!n) {
+    // create note on the fly
+    state.notes.unshift({
+      id: noteId,
+      folderId: state.editingNoteFolderParentId || null,
+      title: "Голосовая заметка",
+      text: "",
+      color: "default",
+      voice: { data: dataUrl, mime: mime || "audio/webm", at: nowIso() },
+      createdAt: nowIso(),
+      updatedAt: nowIso(),
+    });
+  } else {
+    n.voice = { data: dataUrl, mime: mime || "audio/webm", at: nowIso() };
+    n.updatedAt = nowIso();
+    if (!n.title) n.title = "Голосовая заметка";
+  }
+  saveState();
+  render();
+  toast("Голосовая заметка сохранена");
+  if (typeof openNoteStoreModal === "function" && state.editingNoteId === noteId) {
+    openNoteStoreModal(noteId);
+  }
+}
+
+function updateVoiceUI(recording) {
+  const recBtn = document.getElementById("btn-voice-record");
+  const stopBtn = document.getElementById("btn-voice-stop");
+  const bar = document.getElementById("voice-status");
+  if (recBtn) {
+    recBtn.hidden = recording;
+    recBtn.textContent = recording ? "Запись…" : "Голос";
+  }
+  if (stopBtn) stopBtn.hidden = !recording;
+  if (bar) {
+    bar.hidden = !recording;
+    bar.textContent = recording ? "Идёт запись…" : "";
+  }
+}
+
+function playVoiceNote(noteId, btn) {
+  const n = (state.notes || []).find((x) => x.id === noteId);
+  if (!n?.voice?.data) return;
+  try {
+    const a = new Audio(n.voice.data);
+    a.play().catch(() => toast("Не удалось воспроизвести"));
+    if (btn) {
+      btn.textContent = "…";
+      a.onended = () => {
+        btn.textContent = "Слушать";
+      };
+    }
+  } catch (_) {
+    toast("Аудио недоступно");
+  }
+}
+
+function deleteVoiceNote(noteId) {
+  const n = (state.notes || []).find((x) => x.id === noteId);
+  if (!n) return;
+  delete n.voice;
+  n.updatedAt = nowIso();
+  saveState();
+  render();
+  toast("Голосовая запись удалена");
+}
+
 function openNoteStoreModal(noteId = null, folderId = null) {
   state.editingNoteId = noteId;
   const note = noteId ? (state.notes || []).find((n) => n.id === noteId) : null;
@@ -1199,6 +1343,13 @@ function openNoteStoreModal(noteId = null, folderId = null) {
   if (del) del.hidden = !note;
   state.editingNoteFolderParentId =
     folderId !== null ? folderId : note?.folderId || currentNotesFolderId();
+
+  const vPlay = document.getElementById("btn-voice-play");
+  const vDel = document.getElementById("btn-voice-delete");
+  const hasVoice = !!(note && note.voice && note.voice.data);
+  if (vPlay) vPlay.hidden = !hasVoice;
+  if (vDel) vDel.hidden = !hasVoice;
+  updateVoiceUI(false);
 
   const picks = document.getElementById("note-store-colors");
   if (picks) {
@@ -2139,6 +2290,7 @@ async function syncPull(opts = {}) {
             ...winner,
             color: winner.color || withText.color || "default",
             pinned: !!(winner.pinned || withText.pinned),
+            voice: winner.voice || withText.voice || null,
             title: winner.title && winner.title !== "Заметка" ? winner.title : withText.title,
             text: withText.text || winner.text || "",
           });
@@ -2758,9 +2910,23 @@ function bindEvents() {
   });
 
   document.getElementById("grid")?.addEventListener("click", (e) => {
+    const vplay = e.target.closest("[data-note-voice-play]");
+    const vdel = e.target.closest("[data-note-voice-del]");
     const open = e.target.closest("[data-note-open]");
     const del = e.target.closest("[data-note-del]");
     const pin = e.target.closest("[data-note-pin]");
+    if (vplay) {
+      e.preventDefault();
+      e.stopPropagation();
+      playVoiceNote(vplay.getAttribute("data-note-voice-play"), vplay);
+      return;
+    }
+    if (vdel) {
+      e.preventDefault();
+      e.stopPropagation();
+      deleteVoiceNote(vdel.getAttribute("data-note-voice-del"));
+      return;
+    }
     const addNote = e.target.closest("[data-note-add]");
     if (pin && state.filter.startsWith("notes:")) {
       e.preventDefault();
@@ -2916,6 +3082,7 @@ function bindEvents() {
         n.folderId = folderId;
         n.color = color;
         n.updatedAt = nowIso();
+        // voice already on n if recorded
       }
       toast("Заметка сохранена");
     } else {
@@ -3045,8 +3212,8 @@ loadAppConfig().then(() => applyHashCredentials());
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.25 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.25");
+    if (el) el.textContent = "Сборка 2026.10.08.26 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.26");
   } catch (_) {}
 })();
 

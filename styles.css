@@ -2175,3 +2175,48 @@ img {
 .install-steps li {
   margin: 6px 0;
 }
+
+
+.voice-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.keep-card-voice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 6px;
+}
+
+.voice-play {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(26, 22, 18, 0.15);
+  background: rgba(255, 255, 255, 0.55);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.voice-play:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.voice-del {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.voice-del:hover {
+  background: rgba(26, 22, 18, 0.1);
+}

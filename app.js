@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.24";
+const APP_BUILD = "2026.10.08.25";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -1825,6 +1825,10 @@ function syncPayload() {
       links: state.links,
       categories: state.categories,
       deletedCategoryIds: state.deletedCategoryIds || [],
+      noteFolders: state.noteFolders || [],
+      notes: state.notes || [],
+      deletedNoteFolderIds: state.deletedNoteFolderIds || [],
+      deletedNoteIds: state.deletedNoteIds || [],
     },
     null,
     2
@@ -1851,6 +1855,14 @@ async function syncPush(opts = {}) {
         const remote = file?.content ? parseJsonSafe(file.content) : null;
         const remoteLinks = (remote && remote.links) || [];
         const localLinks = state.links || [];
+        const remoteFolders = (remote && remote.noteFolders) || [];
+        const remoteNotes = (remote && remote.notes) || [];
+        if (!(state.noteFolders || []).length && remoteFolders.length) {
+          state.noteFolders = remoteFolders;
+        }
+        if (!(state.notes || []).length && remoteNotes.length) {
+          state.notes = remoteNotes;
+        }
         if (!localLinks.length && remoteLinks.length) {
           // adopt remote instead of overwriting
           state.links = remoteLinks.map(normalizeLink);
@@ -2071,19 +2083,37 @@ async function syncPull(opts = {}) {
       state.deletedNoteFolderIds = [...deadF];
       state.deletedNoteIds = [...deadN];
 
-      const fmap = new Map();
-      for (const f of [...(state.noteFolders || []), ...(data.noteFolders || [])]) {
-        if (!f?.id || deadF.has(f.id)) continue;
+      const fmap = new Map(); // id -> folder
+      const byName = new Map(); // parent::name -> id
+      const putFolder = (f) => {
+        if (!f?.id || deadF.has(f.id)) return;
+        const name = String(f.name || "Папка").trim();
+        const parentId = f.parentId || null;
+        const key = `${parentId || ""}::${name.toLowerCase()}`;
+        const existingId = byName.get(key);
+        const item = {
+          id: f.id,
+          name,
+          parentId,
+          color: f.color || "#c2410c",
+          updatedAt: f.updatedAt || "",
+        };
+        if (existingId && existingId !== f.id) {
+          // same name in same parent — keep both ids but prefer one entry
+          const prev = fmap.get(existingId);
+          if (prev && (f.updatedAt || "") > (prev.updatedAt || "")) {
+            fmap.set(existingId, { ...item, id: existingId });
+          }
+          return;
+        }
         const prev = fmap.get(f.id);
         if (!prev || (f.updatedAt || "") >= (prev.updatedAt || "")) {
-          fmap.set(f.id, {
-            id: f.id,
-            name: f.name || "Папка",
-            parentId: f.parentId || null,
-            color: f.color || "#c2410c",
-            updatedAt: f.updatedAt || "",
-          });
+          fmap.set(f.id, item);
+          byName.set(key, f.id);
         }
+      };
+      for (const f of [...(state.noteFolders || []), ...(data.noteFolders || [])]) {
+        putFolder(f);
       }
       state.noteFolders = [...fmap.values()];
 
@@ -3015,8 +3045,8 @@ loadAppConfig().then(() => applyHashCredentials());
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.24 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.24");
+    if (el) el.textContent = "Сборка 2026.10.08.25 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.25");
   } catch (_) {}
 })();
 

@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.19";
+const APP_BUILD = "2026.10.08.20";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -399,6 +399,278 @@ async function fetchYouTubeMeta(input) {
 
 /* ---------- filtering / sorting ---------- */
 
+function allTags() {
+  const map = new Map();
+  for (const link of state.links) {
+    for (const tag of link.tags || []) {
+      const key = tag.toLowerCase();
+      map.set(key, (map.get(key) || 0) + 1);
+    }
+  }
+  return [...map.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ru"));
+}
+
+
+function renderTags() {
+  const el = document.getElementById("tag-list");
+  const tags = allTags();
+  if (!tags.length) {
+    el.innerHTML = `<span class="hint">Теги появятся у карточек</span>`;
+    return;
+  }
+  el.innerHTML = tags
+    .map(([tag, count]) => {
+      const active = state.activeTags.has(tag);
+      return `<button type="button" class="tag-chip ${active ? "is-active" : ""}" data-tag="${escapeHtml(tag)}">
+        <span>#${escapeHtml(tag)}</span><span class="tag-count">${count}</span>
+      </button>`;
+    })
+    .join("");
+}
+
+
+function parseTagsInput(value) {
+  return String(value || "")
+    .split(/[,;#\n]/)
+    .map((t) => t.trim().replace(/^#/, ""))
+    .filter(Boolean);
+}
+
+
+function render() {
+  const buildEl = document.getElementById("build-label");
+  if (buildEl) buildEl.textContent = `Сборка ${APP_BUILD}`;
+  renderCategories();
+  renderTags();
+  renderGrid();
+  fillCategorySelect();
+  renderSyncStatus();
+  const setup = document.getElementById("setup-banner");
+  const sync = document.getElementById("sync-banner");
+  const ready = isCloudReady();
+  if (setup) {
+    if (ready) setup.setAttribute("hidden", "");
+    else setup.removeAttribute("hidden");
+  }
+  if (sync) {
+    if (ready) sync.removeAttribute("hidden");
+    else sync.setAttribute("hidden", "");
+  }
+}
+
+
+function renderGrid() {
+  if (state.filter.startsWith("notes:")) {
+    renderNotesSidebar();
+    renderNotesView();
+    return;
+  }
+  renderNotesSidebar();
+  const grid = document.getElementById("grid");
+  const empty = document.getElementById("empty");
+  const folderId = currentFolderId();
+
+  // drill-down: only links sitting in THIS folder (subfolders are tiles)
+  let list = [...state.links];
+  if (state.filter === "pinned") {
+    list = list.filter((l) => l.pinned);
+  } else if (folderId) {
+    list = list.filter((l) => l.categoryId === folderId);
+  }
+
+  if (state.activeTags.size) {
+    list = list.filter((l) => {
+      const tags = (l.tags || []).map((t) => t.toLowerCase());
+      return [...state.activeTags].every((t) => tags.includes(t));
+    });
+  }
+
+  const q = state.query.trim().toLowerCase();
+  if (q) {
+    list = list.filter((l) => {
+      const cat = state.categories.find((c) => c.id === l.categoryId);
+      const hay = [l.title, l.note, l.url, cat?.name, (l.tags || []).join(" ")]
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }
+
+  const sort = state.sort;
+  list.sort((a, b) => {
+    if (sort === "title") return (a.title || "").localeCompare(b.title || "", "ru");
+    if (sort === "category") {
+      const an = state.categories.find((c) => c.id === a.categoryId)?.name || "";
+      const bn = state.categories.find((c) => c.id === b.categoryId)?.name || "";
+      return an.localeCompare(bn, "ru") || (a.title || "").localeCompare(b.title || "", "ru");
+    }
+    if (sort === "pinned") {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+    }
+    return (b.updatedAt || b.createdAt || "").localeCompare(a.updatedAt || a.createdAt || "");
+  });
+
+  const titleEl = document.getElementById("page-title");
+  const subEl = document.getElementById("page-sub");
+  const crumbEl = document.getElementById("breadcrumbs");
+  const folderStrip = document.getElementById("folder-strip");
+
+  if (state.filter === "pinned") {
+    titleEl.textContent = "Закреплённые";
+    subEl.textContent = "Самое важное — под рукой";
+    if (crumbEl) crumbEl.innerHTML = "";
+    if (folderStrip) folderStrip.innerHTML = "";
+    const hero = document.getElementById("folder-hero");
+    if (hero) {
+      hero.hidden = true;
+      hero.innerHTML = "";
+    }
+  } else if (folderId) {
+    const cat = state.categories.find((c) => c.id === folderId);
+    const isSub = !!cat?.parentId;
+    const path = categoryPathLabel(folderId);
+    titleEl.textContent = cat?.name || "Папка";
+    subEl.textContent = isSub ? "Содержимое подпапки ниже" : "Папка и её вложенные разделы ниже";
+    if (crumbEl) crumbEl.innerHTML = breadcrumbHtml(folderId);
+
+    // big identity card: which folder you are in + YouTube cards underneath
+    const hero = document.getElementById("folder-hero");
+    if (hero) {
+      const linkCount = state.links.filter((l) => l.categoryId === folderId).length;
+      const subCount = categoryChildren(folderId).length;
+      hero.hidden = false;
+      hero.innerHTML = `
+        <div class="folder-hero-inner">
+          <div class="folder-hero-icon" style="--folder-color:${cat?.color || "#c2410c"}">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+              <path d="M3 7.5A2.5 2.5 0 015.5 5H9l2 2.5h7.5A2.5 2.5 0 0121 10v7.5a2.5 2.5 0 01-2.5 2.5h-13A2.5 2.5 0 013 17.5v-10z"/>
+            </svg>
+          </div>
+          <div class="folder-hero-text">
+            <div class="folder-hero-kicker">${isSub ? "Подпапка" : "Папка"} · ${escapeHtml(path)}</div>
+            <h2 class="folder-hero-title">${escapeHtml(cat?.name || "Папка")}</h2>
+            <div class="folder-hero-meta">
+              <span>${linkCount} ${plural(linkCount, "ссылка", "ссылки", "ссылок")}</span>
+              ${subCount ? `<span class="dot-sep">·</span><span>${subCount} ${plural(subCount, "подпапка", "подпапки", "подпапок")}</span>` : ""}
+            </div>
+          </div>
+          <div class="folder-hero-actions">
+            <button type="button" class="secondary-btn" data-add-sub="${folderId}">+ Подпапка</button>
+            <button type="button" class="secondary-btn" data-edit-cat="${folderId}">Переименовать</button>
+          </div>
+        </div>`;
+    }
+
+    if (folderStrip) {
+      const kids = folderTilesHtml(folderId);
+      folderStrip.innerHTML = kids
+        ? `<div class="folder-strip-label">Вложенные папки</div>` + kids
+        : "";
+    }
+  } else {
+    titleEl.textContent = "Все ссылки";
+    subEl.textContent = "Выберите направление слева или папку ниже";
+    if (crumbEl) crumbEl.innerHTML = "";
+    const hero = document.getElementById("folder-hero");
+    if (hero) {
+      hero.hidden = true;
+      hero.innerHTML = "";
+    }
+    if (folderStrip) folderStrip.innerHTML = folderTilesHtml(null);
+  }
+
+  if (!list.length && !(folderStrip && folderStrip.innerHTML)) {
+    grid.innerHTML = "";
+    empty.hidden = false;
+    return;
+  }
+  empty.hidden = true;
+
+  grid.innerHTML = list
+    .map((link) => {
+      const cat = state.categories.find((c) => c.id === link.categoryId);
+      const videoId = link.videoId || parseYouTubeId(link.url);
+      const thumb = link.thumb || (videoId ? thumbUrl(videoId) : "");
+      return `
+        <article class="card" style="--card-bg:${colorBg(link.color)}" data-id="${link.id}">
+          <a class="card-link card-thumb" href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">
+            ${thumb ? `<img src="${escapeHtml(thumb)}" alt="" loading="lazy" />` : ""}
+            <div class="card-play"><div class="play-circle">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7L8 5z"/></svg>
+            </div></div>
+          </a>
+          <div class="card-body">
+            <div class="card-top">
+              <a class="card-link" href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">
+                <h3 class="card-title">${escapeHtml(link.title || "Без названия")}</h3>
+              </a>
+            </div>
+            <div class="note-fold" data-note-fold="${link.id}">
+              <button type="button" class="note-fold-head" data-note="${link.id}" aria-expanded="false">
+                <span class="note-fold-icon" aria-hidden="true">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+                </span>
+                <span class="note-fold-label">Заметка</span>
+                <span class="note-fold-preview">${link.note ? escapeHtml(String(link.note).replace(/\s+/g, " ").slice(0, 64) + (String(link.note).length > 64 ? "…" : "")) : "добавить текст"}</span>
+              </button>
+              <div class="note-fold-body" hidden>
+                <textarea class="note-fold-input" rows="4" placeholder="О чём видео, мысли, что запомнить…">${escapeHtml(link.note || "")}</textarea>
+                <div class="note-fold-actions">
+                  <button type="button" class="secondary-btn note-save" data-note-save="${link.id}">Готово</button>
+                  ${
+                    link.note
+                      ? `<button type="button" class="ghost-btn note-clear" data-note-clear="${link.id}">Очистить</button>`
+                      : ""
+                  }
+                </div>
+              </div>
+            </div>
+            <div class="card-meta">
+              ${
+                cat
+                  ? `<span class="chip"><span class="chip-dot" style="background:${cat.color}"></span>${escapeHtml(cat.name)}</span>`
+                  : `<span class="chip">Без папки</span>`
+              }
+              <div class="card-actions">
+                <button class="icon-btn ${link.pinned ? "is-active" : ""}" data-pin="${link.id}" title="${link.pinned ? "Открепить" : "Закрепить"}" aria-label="${link.pinned ? "Открепить" : "Закрепить"}">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="${link.pinned ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.8"><path d="M12 3l2.2 6.4H21l-5.3 3.9 2 6.4L12 16.8 6.3 19.7l2-6.4L3 9.4h6.8L12 3z"/></svg>
+                </button>
+                <button class="icon-btn" data-edit="${link.id}" title="Редактировать" aria-label="Редактировать">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                </button>
+                <button class="icon-btn danger" data-delete="${link.id}" title="Удалить" aria-label="Удалить">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+
+function fillCategorySelect() {
+  const rows = buildCategoryTreeRows();
+  const options =
+    `<option value="">Без папки</option>` +
+    rows
+      .map(({ cat, depth }) => {
+        const pad = "\u00A0".repeat(depth * 2);
+        return `<option value="${cat.id}">${pad}${escapeHtml(categoryPathLabel(cat.id))}</option>`;
+      })
+      .join("");
+  for (const id of ["link-category", "import-category"]) {
+    const select = document.getElementById(id);
+    if (!select) continue;
+    const current = select.value;
+    select.innerHTML = options;
+    if ([...select.options].some((o) => o.value === current)) select.value = current;
+  }
+}
+
+
 function visibleLinks() {
   let list = [...state.links];
 
@@ -670,22 +942,6 @@ function folderTilesHtml(folderId) {
         .join("")}
     </div>
   `;
-}
-
-function noteFolderRows(parentId, depth = 0) {
-  const kids = noteFolderChildren(parentId).sort((a, b) =>
-    String(a.name || "").localeCompare(String(b.name || ""), "ru")
-  );
-  const rows = [];
-  for (const f of kids) {
-    const childFolders = noteFolderChildren(f.id);
-    const expanded = state.expandedNoteFolders.has(f.id);
-    rows.push({ f, depth, expanded, hasKids: childFolders.length > 0 });
-    if (expanded && childFolders.length) {
-      rows.push(...noteFolderRows(f.id, depth + 1));
-    }
-  }
-  return rows;
 }
 
 function noteFolderRows(parentId, depth = 0) {

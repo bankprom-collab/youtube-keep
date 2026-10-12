@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.21";
+const APP_BUILD = "2026.10.08.22";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -447,7 +447,11 @@ function render() {
   renderSyncStatus();
   const setup = document.getElementById("setup-banner");
   const sync = document.getElementById("sync-banner");
-  const ready = isCloudReady();
+  const ready = isCloudReady() || !!(appConfig && appConfig.token && (state.sync.gistId || appConfig.gistId));
+  if (ready && state.sync.token !== appConfig.token && appConfig.token) {
+    state.sync.token = appConfig.token;
+    if (appConfig.gistId) state.sync.gistId = appConfig.gistId;
+  }
   if (setup) {
     if (ready) setup.setAttribute("hidden", "");
     else setup.removeAttribute("hidden");
@@ -2278,6 +2282,64 @@ function handleSaveSync(e) {
 
 /* ---------- events ---------- */
 
+window.addEventListener("error", function (e) {
+  try {
+    const el = document.getElementById("toast");
+    if (el) {
+      el.textContent = "Ошибка: " + (e.message || "script");
+      el.classList.add("is-visible");
+      setTimeout(() => el.classList.remove("is-visible"), 4000);
+    }
+  } catch (_) {}
+});
+
+// Delegated safety net: critical actions work even if bindEvents partially failed
+document.addEventListener("click", function (e) {
+  try {
+    const add = e.target.closest("#btn-add, #btn-empty-add, [data-open-add]");
+    if (add) {
+      e.preventDefault();
+      if (typeof openLinkModal === "function") openLinkModal();
+      return;
+    }
+    const setup = e.target.closest("#btn-open-setup, #btn-sync-settings");
+    if (setup) {
+      e.preventDefault();
+      if (typeof openSyncModal === "function") openSyncModal();
+      return;
+    }
+    const syncNow = e.target.closest("#btn-sync-now");
+    if (syncNow) {
+      e.preventDefault();
+      if (typeof syncAll === "function") syncAll();
+      return;
+    }
+    const menu = e.target.closest("#btn-menu");
+    if (menu) {
+      e.preventDefault();
+      if (typeof openSidebar === "function") openSidebar();
+    }
+  } catch (err) {
+    try {
+      const el = document.getElementById("toast");
+      if (el) {
+        el.textContent = "Клик: " + err.message;
+        el.classList.add("is-visible");
+      }
+    } catch (_) {}
+  }
+}, true);
+
+window.__ytkAdd = function () {
+  if (typeof openLinkModal === "function") openLinkModal();
+};
+window.__ytkSetup = function () {
+  if (typeof openSyncModal === "function") openSyncModal();
+};
+window.__ytkSync = function () {
+  if (typeof syncAll === "function") syncAll();
+};
+
 function bindEvents() {
   // filters
   document.getElementById("nav").addEventListener("click", (e) => {
@@ -2875,8 +2937,8 @@ loadAppConfig().then(() => applyHashCredentials());
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.21 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.21");
+    if (el) el.textContent = "Сборка 2026.10.08.22 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.22");
   } catch (_) {}
 })();
 

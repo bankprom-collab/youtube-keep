@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.20";
+const APP_BUILD = "2026.10.08.21";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -2870,6 +2870,15 @@ loadState();
 bindEvents();
 render();
 loadAppConfig().then(() => applyHashCredentials());
+
+// Mark app as alive for the user / debugging
+(function markAlive() {
+  try {
+    const el = document.getElementById("build-label");
+    if (el) el.textContent = "Сборка 2026.10.08.21 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.21");
+  } catch (_) {}
+})();
 
 // Huawei/HarmonyOS often cannot install PWA — show help after a few seconds if not standalone
 if ("serviceWorker" in navigator) {

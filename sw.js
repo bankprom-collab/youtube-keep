@@ -1,5 +1,5 @@
 /* YouTube Keep service worker */
-const CACHE = "youtube-keep-v24-2026.10.08.20";
+const CACHE = "youtube-keep-v25-2026.10.08.21";
 const ASSETS = [
   "./",
   "./index.html",
@@ -11,45 +11,34 @@ const ASSETS = [
 ];
 
 self.addEventListener("install", (event) => {
+  self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())
+    caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).catch(() => {})
   );
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
-    ).then(() => self.clients.claim())
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
   );
 });
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
-
-  const url = new URL(request.url);
-  if (url.origin !== self.location.origin) {
-    event.respondWith(
-      fetch(request)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((cache) => cache.put(request, copy)).catch(() => {});
-          return res;
-        })
-        .catch(() => caches.match(request))
-    );
-    return;
-  }
-
-  // Network-first for app shell so updates reach users immediately
+  // Always network first so users get the latest app
   event.respondWith(
     fetch(request)
       .then((res) => {
         const copy = res.clone();
-        caches.open(CACHE).then((cache) => cache.put(request, copy)).catch(() => {});
+        caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => {});
         return res;
       })
-      .catch(() => caches.match(request).then((cached) => cached || caches.match("./index.html")))
+      .catch(() =>
+        caches.match(request).then((c) => c || caches.match("./index.html"))
+      )
   );
 });

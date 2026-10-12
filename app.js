@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.28";
+const APP_BUILD = "2026.10.08.29";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -1159,7 +1159,8 @@ function renderNotesView() {
           ${
             n.voice?.data
               ? `<div class="keep-card-voice">
-                   <button type="button" class="voice-play" data-note-voice-play="${n.id}">Слушать</button>
+                   <div class="voice-player-label">Голос</div>
+                   <audio controls class="voice-audio voice-audio-mini" src="${n.voice.data}"></audio>
                    <button type="button" class="voice-del" data-note-voice-del="${n.id}" title="Удалить аудио">×</button>
                  </div>`
               : ""
@@ -1304,6 +1305,33 @@ function blobToDataUrl(blob) {
   });
 }
 
+function renderVoicePlayer(noteId) {
+  const box = document.getElementById("voice-player");
+  const n = (state.notes || []).find((x) => x.id === noteId);
+  if (!box) return;
+  if (!n?.voice?.data) {
+    box.hidden = true;
+    box.innerHTML = "";
+    return;
+  }
+  box.hidden = false;
+  box.innerHTML = `
+    <div class="voice-player-inner">
+      <div class="voice-player-label">Голосовая запись в этой заметке</div>
+      <audio controls class="voice-audio" src="${n.voice.data}"></audio>
+      <div class="voice-player-actions">
+        <button type="button" class="ghost-btn" id="btn-voice-delete">Удалить запись</button>
+      </div>
+    </div>`;
+  const del = document.getElementById("btn-voice-delete");
+  if (del) {
+    del.addEventListener("click", () => {
+      deleteVoiceNote(noteId);
+      renderVoicePlayer(noteId);
+    });
+  }
+}
+
 function attachVoiceToNote(noteId, dataUrl, mime) {
   const n = (state.notes || []).find((x) => x.id === noteId);
   if (!n) {
@@ -1325,10 +1353,12 @@ function attachVoiceToNote(noteId, dataUrl, mime) {
   }
   saveState();
   render();
-  toast("Голосовая заметка сохранена");
-  if (typeof openNoteStoreModal === "function" && state.editingNoteId === noteId) {
-    openNoteStoreModal(noteId);
-  }
+  toast("Голосовая запись сохранена в заметку");
+  renderVoicePlayer(noteId);
+  const play = document.getElementById("btn-voice-play");
+  const delv = document.getElementById("btn-voice-delete");
+  if (play) play.hidden = false;
+  if (delv) delv.hidden = true; // shown inside player
 }
 
 function updateVoiceUI(recording) {
@@ -1391,7 +1421,8 @@ function openNoteStoreModal(noteId = null, folderId = null) {
   const vDel = document.getElementById("btn-voice-delete");
   const hasVoice = !!(note && note.voice && note.voice.data);
   if (vPlay) vPlay.hidden = !hasVoice;
-  if (vDel) vDel.hidden = !hasVoice;
+  if (vDel) vDel.hidden = true;
+  renderVoicePlayer(state.editingNoteId);
   updateVoiceUI(false);
 
   const picks = document.getElementById("note-store-colors");
@@ -3290,8 +3321,8 @@ loadAppConfig().then(() => applyHashCredentials());
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.28 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.28");
+    if (el) el.textContent = "Сборка 2026.10.08.29 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.29");
   } catch (_) {}
 })();
 

@@ -2220,3 +2220,45 @@ img {
 .voice-del:hover {
   background: rgba(26, 22, 18, 0.1);
 }
+
+
+.voice-player {
+  margin-top: 8px;
+}
+
+.voice-player-inner {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+}
+
+.voice-player-label {
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 8px;
+}
+
+.voice-audio {
+  width: 100%;
+  height: 40px;
+  border-radius: 8px;
+}
+
+.voice-audio-mini {
+  height: 36px;
+}
+
+.keep-card-voice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(26, 22, 18, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.45);
+}

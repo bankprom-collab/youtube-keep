@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.32";
+const APP_BUILD = "2026.10.08.33";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -1159,11 +1159,11 @@ function renderNotesView() {
           ${
             noteVoices(n).length
               ? `<div class="keep-card-voice">
-                   <div class="voice-player-label">Голосовые записи (${noteVoices(n).length})</div>
+                   <div class="voice-player-label">Голосовые (${noteVoices(n).length})</div>
                    ${noteVoices(n)
                      .map(
                        (v, i) => `
-                     <div class="voice-row-title">Запись №${i + 1}</div>
+                     <div class="voice-row-title">${escapeHtml(voiceLabel(v, i))}</div>
                      <audio controls class="voice-audio voice-audio-mini" src="${v.data}"></audio>`
                      )
                      .join("")}
@@ -1201,7 +1201,7 @@ const KEEP_SWATCHES = [
 ];
 
 
-/* ===== Voice notes (simple sequential) ===== */
+/* ===== Voice notes ===== */
 const voiceState = {
   recorder: null,
   chunks: [],
@@ -1209,31 +1209,52 @@ const voiceState = {
   recording: false,
   startedAt: 0,
   timer: null,
+  prevVolumes: [],
 };
+
+function muteAllAudio(mute) {
+  try {
+    document.querySelectorAll("audio, video").forEach(function (el) {
+      if (mute) {
+        el.dataset.prevMuted = el.muted ? "1" : "0";
+        el.muted = true;
+        el.pause();
+      } else {
+        if (el.dataset.prevMuted === "0") el.muted = false;
+      }
+    });
+    if (window.__ytkAudio) {
+      if (mute) window.__ytkAudio.pause();
+      window.__ytkAudio.muted = !!mute;
+    }
+  } catch (_) {}
+}
 
 function stopAllPlayback() {
   try {
-    document.querySelectorAll("audio").forEach((a) => {
+    document.querySelectorAll("audio, video").forEach(function (a) {
       a.pause();
       try {
         a.currentTime = 0;
       } catch (_) {}
     });
-    if (window.__ytkAudio) {
-      window.__ytkAudio.pause();
-    }
+    if (window.__ytkAudio) window.__ytkAudio.pause();
   } catch (_) {}
 }
 
 function noteVoices(note) {
   if (!note) return [];
-  if (Array.isArray(note.voices) && note.voices.length) return note.voices.filter((v) => v && v.data);
+  if (Array.isArray(note.voices)) return note.voices.filter(function (v) {
+    return v && v.data;
+  });
   if (note.voice && note.voice.data) return [note.voice];
   return [];
 }
 
 function ensureNoteForVoice(noteId) {
-  let n = (state.notes || []).find((x) => x.id === noteId);
+  let n = (state.notes || []).find(function (x) {
+    return x.id === noteId;
+  });
   if (n) return n;
   n = {
     id: noteId,
@@ -1249,9 +1270,15 @@ function ensureNoteForVoice(noteId) {
   return n;
 }
 
+function voiceLabel(v, i) {
+  return v.name || "Запись №" + (i + 1);
+}
+
 function renderVoicePlayer(noteId) {
   const box = document.getElementById("voice-player");
-  const n = (state.notes || []).find((x) => x.id === noteId);
+  const n = (state.notes || []).find(function (x) {
+    return x.id === noteId;
+  });
   if (!box) return;
   const list = noteVoices(n);
   if (!list.length) {
@@ -1262,22 +1289,32 @@ function renderVoicePlayer(noteId) {
   box.hidden = false;
   box.innerHTML =
     '<div class="voice-player-inner">' +
-    '<div class="voice-player-label">Голосовые записи (' + list.length + ")</div>" +
+    '<div class="voice-player-label">Голосовые записи — всего ' +
+    list.length +
+    "</div>" +
     list
       .map(function (v, i) {
         return (
-          '<div class="voice-row-item" data-voice-row="' +
-          i +
-          '">' +
-          '<div class="voice-row-title">Запись №' +
+          '<div class="voice-row-item">' +
+          '<div class="voice-row-head">' +
+          '<span class="voice-row-num">' +
           (i + 1) +
+          "</span>" +
+          '<input class="voice-name-input" data-voice-name="' +
+          i +
+          '" type="text" value="' +
+          (v.name || "").replace(/"/g, "&quot;") +
+          '" placeholder="' +
+          "Запись №" +
+          (i + 1) +
+          '" maxlength="40" />' +
           "</div>" +
-          '<audio controls class="voice-audio" src="' +
+          '<audio controls preload="metadata" class="voice-audio" src="' +
           v.data +
           '"></audio>' +
           '<button type="button" class="ghost-btn voice-row-del" data-voice-idx="' +
           i +
-          '">Удалить №' +
+          '">Удалить запись ' +
           (i + 1) +
           "</button>" +
           "</div>"
@@ -1289,8 +1326,10 @@ function renderVoicePlayer(noteId) {
   box.querySelectorAll("[data-voice-idx]").forEach(function (btn) {
     btn.addEventListener("click", function () {
       const idx = parseInt(btn.getAttribute("data-voice-idx"), 10);
-      confirmAction("Удалить запись №" + (idx + 1) + "?", "Эта голосовая запись будет стёрта.", function () {
-        const n2 = (state.notes || []).find((x) => x.id === noteId);
+      confirmAction("Удалить запись " + (idx + 1) + "?", "Аудио будет стёрто.", function () {
+        const n2 = (state.notes || []).find(function (x) {
+          return x.id === noteId;
+        });
         if (!n2) return;
         const arr = noteVoices(n2);
         arr.splice(idx, 1);
@@ -1299,24 +1338,43 @@ function renderVoicePlayer(noteId) {
         saveState();
         render();
         renderVoicePlayer(noteId);
-        toast("Запись №" + (idx + 1) + " удалена");
+        toast("Запись удалена");
       });
+    });
+  });
+
+  box.querySelectorAll("[data-voice-name]").forEach(function (inp) {
+    inp.addEventListener("change", function () {
+      const idx = parseInt(inp.getAttribute("data-voice-name"), 10);
+      const n2 = (state.notes || []).find(function (x) {
+        return x.id === noteId;
+      });
+      if (!n2) return;
+      const arr = noteVoices(n2);
+      if (!arr[idx]) return;
+      arr[idx].name = inp.value.trim() || "Запись №" + (idx + 1);
+      n2.voices = arr;
+      n2.updatedAt = nowIso();
+      saveState();
+      render();
+      renderVoicePlayer(noteId);
+      toast("Имя записи сохранено");
     });
   });
 }
 
 async function startVoiceRecord(noteId) {
   if (voiceState.recording) {
-    toast("Запись уже идёт");
+    toast("Запись уже идёт — нажмите Стоп");
     return;
   }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    toast("Микрофон не поддерживается в этом браузере");
+    toast("Микрофон не поддерживается");
     return;
   }
 
-  // kill echo: stop playback before rec
   stopAllPlayback();
+  muteAllAudio(true);
 
   let stream;
   try {
@@ -1325,32 +1383,41 @@ async function startVoiceRecord(noteId) {
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
+        channelCount: 1,
       },
     });
   } catch (err) {
-    toast("Нет доступа к микрофону. Разрешите запись звука в браузере.");
+    muteAllAudio(false);
+    toast("Нет доступа к микрофону");
     return;
   }
 
-  const mime = MediaRecorder.isTypeSupported("audio/webm")
-    ? "audio/webm"
-    : MediaRecorder.isTypeSupported("audio/mp4")
-      ? "audio/mp4"
-      : "";
   let rec;
+  const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+    ? "audio/webm;codecs=opus"
+    : MediaRecorder.isTypeSupported("audio/webm")
+      ? "audio/webm"
+      : MediaRecorder.isTypeSupported("audio/mp4")
+        ? "audio/mp4"
+        : "";
   try {
-    rec = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 32000 } : undefined);
+    rec = new MediaRecorder(
+      stream,
+      mime ? { mimeType: mime, audioBitsPerSecond: 24000 } : undefined
+    );
   } catch (_) {
     try {
       rec = new MediaRecorder(stream);
     } catch (__) {
-      stream.getTracks().forEach((t) => t.stop());
+      stream.getTracks().forEach(function (t) {
+        t.stop();
+      });
+      muteAllAudio(false);
       toast("Не удалось запустить запись");
       return;
     }
   }
 
-  // bind this recording to a stable note
   const id = noteId || state.editingNoteId || uid();
   state.editingNoteId = id;
   ensureNoteForVoice(id);
@@ -1376,21 +1443,32 @@ async function startVoiceRecord(noteId) {
     voiceState.recorder = null;
     if (voiceState.timer) clearInterval(voiceState.timer);
     updateVoiceUI(false);
+    // small delay so mic device fully released (reduces echo on next take)
+    setTimeout(function () {
+      muteAllAudio(false);
+    }, 250);
 
     if (!voiceState.noteId) return;
     if (!blob.size || blob.size < 80) {
-      toast("Запись пустая — попробуйте ещё раз");
+      toast("Запись пустая — повторите");
       return;
     }
     if (blob.size > 8 * 1024 * 1024) {
-      toast("Запись слишком большая");
+      toast("Запись слишком длинная");
       return;
     }
 
     const dataUrl = await blobToDataUrl(blob);
     const n = ensureNoteForVoice(voiceState.noteId);
     const arr = noteVoices(n);
-    arr.push({ id: uid(), data: dataUrl, mime: rec.mimeType || "audio/webm", at: nowIso() });
+    const num = arr.length + 1;
+    arr.push({
+      id: uid(),
+      data: dataUrl,
+      mime: rec.mimeType || "audio/webm",
+      at: nowIso(),
+      name: "Запись №" + num,
+    });
     n.voices = arr;
     delete n.voice;
     n.updatedAt = nowIso();
@@ -1398,12 +1476,7 @@ async function startVoiceRecord(noteId) {
     saveState();
     render();
     renderVoicePlayer(voiceState.noteId);
-    toast("Сохранено: запись №" + arr.length);
-    // keep editor in sync
-    const titleInp = document.getElementById("note-store-name");
-    if (titleInp && state.editingNoteId === voiceState.noteId && !titleInp.value) {
-      titleInp.value = n.title;
-    }
+    toast("Готово: Запись №" + num);
   };
 
   try {
@@ -1415,6 +1488,7 @@ async function startVoiceRecord(noteId) {
       stream.getTracks().forEach(function (t) {
         t.stop();
       });
+      muteAllAudio(false);
       toast("Не удалось начать запись");
       return;
     }
@@ -1430,10 +1504,10 @@ async function startVoiceRecord(noteId) {
     if (bar) {
       bar.hidden = false;
       bar.className = "hint is-err";
-      bar.textContent = "Запись " + mm + ":" + ss + " … Нажмите «Стоп»";
+      bar.textContent = "Запись " + mm + ":" + ss + " … Потом «Стоп»";
     }
   }, 400);
-  toast("Запись начата");
+  toast("Запись начата (звуки приложения заглушены)");
 }
 
 function stopVoiceRecord() {
@@ -1444,10 +1518,15 @@ function stopVoiceRecord() {
   if (voiceState.recorder && voiceState.recording) {
     try {
       voiceState.recorder.stop();
-    } catch (_) {}
+    } catch (_) {
+      voiceState.recording = false;
+      updateVoiceUI(false);
+      muteAllAudio(false);
+    }
   } else {
     voiceState.recording = false;
     updateVoiceUI(false);
+    muteAllAudio(false);
   }
 }
 
@@ -1461,11 +1540,14 @@ function blobToDataUrl(blob) {
   });
 }
 
-function playVoiceNote(noteId, btn) {
-  const n = (state.notes || []).find((x) => x.id === noteId);
+function playVoiceNote(noteId) {
+  const n = (state.notes || []).find(function (x) {
+    return x.id === noteId;
+  });
   const list = noteVoices(n);
   if (!list.length) return;
   stopAllPlayback();
+  muteAllAudio(false);
   const a = new Audio(list[list.length - 1].data);
   window.__ytkAudio = a;
   a.play().catch(function () {
@@ -1474,16 +1556,18 @@ function playVoiceNote(noteId, btn) {
 }
 
 function deleteVoiceNote(noteId) {
-  const n = (state.notes || []).find((x) => x.id === noteId);
+  const n = (state.notes || []).find(function (x) {
+    return x.id === noteId;
+  });
   if (!n || !noteVoices(n).length) return;
-  confirmAction("Удалить все голосовые записи?", "Все аудио этой заметки будут стёрты.", function () {
+  confirmAction("Удалить все голосовые?", "Все аудио заметки сотрутся.", function () {
     n.voices = [];
     delete n.voice;
     n.updatedAt = nowIso();
     saveState();
     render();
     renderVoicePlayer(noteId);
-    toast("Голосовые записи удалены");
+    toast("Голосовые удалены");
   });
 }
 
@@ -1491,18 +1575,10 @@ function updateVoiceUI(recording) {
   const recBtn = document.getElementById("btn-voice-record");
   const stopBtn = document.getElementById("btn-voice-stop");
   const bar = document.getElementById("voice-status");
-  if (recBtn) {
-    recBtn.hidden = recording;
-  }
+  if (recBtn) recBtn.hidden = recording;
   if (stopBtn) stopBtn.hidden = !recording;
-  if (bar) {
-    bar.hidden = false;
-    if (recording) {
-      bar.className = "hint is-err";
-    } else if (!noteVoices((state.notes || []).find((x) => x.id === state.editingNoteId)).length) {
-      bar.className = "hint";
-      bar.textContent = "Нажмите «Записать голос» → говорите → «Стоп». Каждая запись — новая строка.";
-    }
+  if (bar && !recording) {
+    bar.className = "hint";
   }
 }
 
@@ -3451,8 +3527,8 @@ loadAppConfig().then(() => applyHashCredentials());
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.32 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.32");
+    if (el) el.textContent = "Сборка 2026.10.08.33 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.33");
   } catch (_) {}
 })();
 

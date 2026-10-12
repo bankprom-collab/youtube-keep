@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.26";
+const APP_BUILD = "2026.10.08.27";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -1213,7 +1213,16 @@ async function startVoiceRecord(noteId) {
       : MediaRecorder.isTypeSupported("audio/mp4")
         ? "audio/mp4"
         : "";
-    const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    const rec = new MediaRecorder(
+      stream,
+      mime
+        ? {
+            mimeType: mime,
+            audioBitsPerSecond: 16000,
+            videoBitsPerSecond: 0,
+          }
+        : { audioBitsPerSecond: 16000 }
+    );
     voiceState.chunks = [];
     voiceState.noteId = noteId;
     voiceState.recorder = rec;
@@ -1228,15 +1237,26 @@ async function startVoiceRecord(noteId) {
       voiceState.recording = false;
       voiceState.recorder = null;
       if (!voiceState.noteId || blob.size < 200) return;
-      if (blob.size > 3.5 * 1024 * 1024) {
-        toast("Слишком длинная запись (макс. ~3 МБ). Сохранена не будет.");
+      if (blob.size > 8 * 1024 * 1024) {
+        toast("Запись слишком большая (лимит 8 МБ). Попробуйте короче.");
         return;
       }
       const dataUrl = await blobToDataUrl(blob);
       attachVoiceToNote(voiceState.noteId, dataUrl, rec.mimeType || "audio/webm");
     };
-    rec.start();
+    rec.start(1000);
     updateVoiceUI(true);
+    if (voiceState.timer) clearInterval(voiceState.timer);
+    voiceState.timer = setInterval(() => {
+      const s = Math.floor((Date.now() - voiceState.startedAt) / 1000);
+      const mm = String(Math.floor(s / 60)).padStart(2, "0");
+      const ss = String(s % 60).padStart(2, "0");
+      const bar = document.getElementById("voice-status");
+      if (bar) {
+        bar.hidden = false;
+        bar.textContent = "Запись " + mm + ":" + ss + " (можно долго)";
+      }
+    }, 500);
     toast("Запись… Нажмите «Стоп»");
   } catch (err) {
     toast("Нет доступа к микрофону");
@@ -1244,6 +1264,8 @@ async function startVoiceRecord(noteId) {
 }
 
 function stopVoiceRecord() {
+  if (voiceState.timer) clearInterval(voiceState.timer);
+  voiceState.timer = null;
   if (voiceState.recorder && voiceState.recording) {
     try {
       voiceState.recorder.stop();
@@ -3212,8 +3234,8 @@ loadAppConfig().then(() => applyHashCredentials());
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.26 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.26");
+    if (el) el.textContent = "Сборка 2026.10.08.27 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.27");
   } catch (_) {}
 })();
 

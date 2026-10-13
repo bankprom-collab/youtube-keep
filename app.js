@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.56";
+const APP_BUILD = "2026.10.08.57";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -1192,7 +1192,7 @@ function renderNotesView() {
         const voiceCount = noteVoices(n).length;
         const preview = String(n.text || "").replace(/\s+/g, " ").slice(0, 100);
         return `
-        <article class="keep-card ${expanded ? "is-open" : "is-closed"}" style="background:${bg}" data-note-id="${n.id}">
+        <article class="keep-card ${expanded ? "is-open" : "is-closed"}" style="background:${bg}" data-note-id="${n.id}" draggable="true">
           <div class="keep-card-head" data-note-toggle="${n.id}">
             <span class="keep-chevron ${expanded ? "is-open" : ""}">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>
@@ -2856,10 +2856,7 @@ async function syncPull(opts = {}) {
         // Collapse duplicates by title+folder ("трава" on PC + phone -> one note)
         const byKey = new Map();
         for (const n of nmap.values()) {
-          const key =
-            String(n.title || "").trim().toLowerCase() +
-            "::" +
-            (n.folderId || "");
+          const key = String(n.title || "").trim().toLowerCase() + "::";
           const prev = byKey.get(key);
           if (!prev) {
             byKey.set(key, n);
@@ -3571,6 +3568,76 @@ function bindEvents() {
     }
   });
 
+  let dragNoteId = null;
+  document.getElementById("grid")?.addEventListener("dragstart", (e) => {
+    const card = e.target.closest("[data-note-id]");
+    if (!card) return;
+    dragNoteId = card.getAttribute("data-note-id");
+    try {
+      e.dataTransfer.setData("text/plain", dragNoteId);
+      e.dataTransfer.effectAllowed = "move";
+    } catch (_) {}
+    card.classList.add("is-dragging");
+  });
+  document.getElementById("grid")?.addEventListener("dragend", () => {
+    dragNoteId = null;
+    document.querySelectorAll(".is-dragging").forEach((el) => el.classList.remove("is-dragging"));
+    document.querySelectorAll(".is-drop").forEach((el) => el.classList.remove("is-drop"));
+  });
+
+  document.getElementById("folder-strip")?.addEventListener("dragover", (e) => {
+    const z = e.target.closest("[data-drop-folder], [data-drop-none]");
+    if (!z) return;
+    e.preventDefault();
+    z.classList.add("is-drop");
+  });
+  document.getElementById("folder-strip")?.addEventListener("dragleave", (e) => {
+    const z = e.target.closest("[data-drop-folder], [data-drop-none]");
+    if (z) z.classList.remove("is-drop");
+  });
+  document.getElementById("folder-strip")?.addEventListener("drop", (e) => {
+    const z = e.target.closest("[data-drop-folder], [data-drop-none]");
+    if (!z) return;
+    e.preventDefault();
+    z.classList.remove("is-drop");
+    const id = dragNoteId || (e.dataTransfer && e.dataTransfer.getData("text/plain"));
+    if (!id) return;
+    const folderId = z.hasAttribute("data-drop-none") ? null : z.getAttribute("data-drop-folder");
+    const n = (state.notes || []).find((x) => x.id === id);
+    if (!n) return;
+    n.folderId = folderId;
+    n.updatedAt = nowIso();
+    saveState();
+    render();
+    toast(folderId ? "Заметка перенесена в папку" : "Заметка вынута из папки");
+    syncAll().catch(() => {});
+  });
+
+  // also allow drop on sidebar folders
+  document.getElementById("notes-list")?.addEventListener("dragover", (e) => {
+    const z = e.target.closest("[data-note-folder]");
+    if (!z) return;
+    e.preventDefault();
+    z.classList.add("is-drop");
+  });
+  document.getElementById("notes-list")?.addEventListener("drop", (e) => {
+    const z = e.target.closest("[data-note-folder]");
+    if (!z) return;
+    e.preventDefault();
+    z.classList.remove("is-drop");
+    const id = dragNoteId || (e.dataTransfer && e.dataTransfer.getData("text/plain"));
+    const folderId = z.getAttribute("data-note-folder") || null;
+    if (!id) return;
+    const n = (state.notes || []).find((x) => x.id === id);
+    if (!n) return;
+    n.folderId = folderId || null;
+    n.updatedAt = nowIso();
+    saveState();
+    render();
+    toast("Заметка перенесена");
+    syncAll().catch(() => {});
+  });
+
   document.getElementById("grid")?.addEventListener("dblclick", (e) => {
     const open = e.target.closest("[data-note-open]");
     if (open && state.filter.startsWith("notes:")) {
@@ -3963,8 +4030,8 @@ loadAppConfig()
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.56 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.56");
+    if (el) el.textContent = "Сборка 2026.10.08.57 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.57");
   } catch (_) {}
 })();
 

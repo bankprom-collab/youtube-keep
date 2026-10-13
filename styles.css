@@ -2612,3 +2612,20 @@ img {
 #note-store-folder-select {
   margin-top: 6px;
 }
+
+
+.keep-card.is-dragging {
+  opacity: 0.55;
+  outline: 2px dashed var(--accent);
+}
+
+.folder-tile-wrap.is-drop,
+.dir-btn.is-drop,
+.dir-row.is-drop {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+[data-drop-none] {
+  border-style: dashed !important;
+}

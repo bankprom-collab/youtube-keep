@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.63";
+const APP_BUILD = "2026.10.08.64";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -3211,7 +3211,17 @@ async function syncPull(opts = {}) {
     state.sync.status = "ok";
     saveSyncSettings();
     render();
-    setSyncMessage(`Готово. Ссылок: ${state.links.length}`);
+    const cloudClips = (data.voiceClips || []).length;
+    const localClips = (state.notes || []).reduce(function (s, n) {
+      return s + noteVoices(n).length;
+    }, 0);
+    setSyncMessage(
+      "Загружено. На устройстве голосовых: " +
+        localClips +
+        " (в файле облака клипов: " +
+        Math.max(cloudClips, localClips) +
+        ")"
+    );
     if (!opts.silent) toast("Данные загружены из облака");
   } catch (err) {
     state.sync.status = "err";
@@ -4349,7 +4359,14 @@ loadAppConfig()
   .then(() => {
     render();
     if (isCloudReady()) {
-      syncAll().then(() => hydrateAllVoices()).then(() => render());
+      // pull first so phone receives everything from PC/Mac
+      syncPull({ silent: true, skipStatus: true })
+        .then(() => hydrateAllVoices())
+        .then(() => {
+          render();
+          return syncAll();
+        })
+        .catch(() => {});
       startCloudWatch();
     }
   });
@@ -4358,8 +4375,8 @@ loadAppConfig()
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.63 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.63");
+    if (el) el.textContent = "Сборка 2026.10.08.64 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.64");
   } catch (_) {}
 })();
 

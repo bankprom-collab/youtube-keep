@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.46";
+const APP_BUILD = "2026.10.08.47";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -1028,11 +1028,7 @@ function renderNotesSidebar() {
         <span class="dir-name">Все заметки</span>
         <span class="dir-counts"><span class="dir-num">${(state.notes || []).length}</span></span>
       </button>
-      ${
-        open
-          ? `<button type="button" class="dir-act" data-note-folder-add="" title="Новая папка" aria-label="Новая папка">+</button>`
-          : ""
-      }
+      <button type="button" class="notes-add-folder" data-note-folder-add="" title="Новая папка">+ папка</button>
     </div>`;
 
   if (!open) {
@@ -3852,8 +3848,8 @@ loadAppConfig()
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.46 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.46");
+    if (el) el.textContent = "Сборка 2026.10.08.47 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.47");
   } catch (_) {}
 })();
 

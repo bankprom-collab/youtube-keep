@@ -2554,3 +2554,21 @@ img {
   font-weight: 650;
   color: var(--accent);
 }
+
+
+.notes-add-folder {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 750;
+  flex-shrink: 0;
+}
+
+.notes-add-folder:hover {
+  background: var(--accent);
+  color: #fff;
+}

@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.60";
+const APP_BUILD = "2026.10.08.61";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -2203,6 +2203,145 @@ function deleteCategory(id) {
   );
 }
 
+async function exportFullBackup() {
+  const notes = await notesForSync();
+  const payload = {
+    version: 3,
+    exportedAt: nowIso(),
+    links: state.links,
+    categories: state.categories,
+    noteFolders: state.noteFolders || [],
+    notes: notes,
+    voiceClips: (function () {
+      const out = [];
+      for (const n of notes) {
+        for (const v of n.voices || []) {
+          if (v && v.data) {
+            out.push({
+              id: v.id,
+              noteTitle: n.title || "",
+              noteId: n.id,
+              name: v.name,
+              data: v.data,
+            });
+          }
+        }
+      }
+      return out;
+    })(),
+    deletedCategoryIds: state.deletedCategoryIds || [],
+    deletedNoteIds: state.deletedNoteIds || [],
+    deletedNoteFolderIds: state.deletedNoteFolderIds || [],
+  };
+  const blob = new Blob([JSON.stringify(payload)], {
+    type: "application/json",
+  });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "youtube-keep-full-" + Date.now() + ".json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast("Файл со всеми голосовыми сохранён");
+}
+
+async function importFullBackup(file) {
+  const text = await file.text();
+  const data = parseJsonSafe(text);
+  if (!data || !Array.isArray(data.notes)) {
+    toast("Файл не похож на резервную копию");
+    return;
+  }
+  // union notes + clips
+  const clipMap = new Map();
+  const addClip = (v) => {
+    if (!v || !v.data) return;
+    const k = v.id || String(v.data).slice(0, 80);
+    const prev = clipMap.get(k);
+    if (!prev || String(v.data || "").length > String(prev.data || "").length) {
+      clipMap.set(k, v);
+    }
+  };
+  for (const n of [...(state.notes || []), ...(data.notes || [])]) {
+    for (const v of n.voices || []) addClip(v);
+    if (n.voice) addClip(n.voice);
+  }
+  for (const v of data.voiceClips || []) addClip(v);
+
+  const nmap = new Map();
+  const put = (n) => {
+    if (!n || !n.id) return;
+    const prev = nmap.get(n.id);
+    const item = {
+      id: n.id,
+      folderId: n.folderId || null,
+      title: n.title || "Заметка",
+      text: n.text || "",
+      color: n.color || "default",
+      pinned: !!n.pinned,
+      createdAt: n.createdAt || "",
+      updatedAt: n.updatedAt || "",
+      voices: [],
+    };
+    if (!prev) nmap.set(item.id, item);
+    else
+      nmap.set(item.id, {
+        ...prev,
+        ...item,
+        text: String(n.text || "").length >= String(prev.text || "").length ? n.text : prev.text,
+      });
+  };
+  for (const n of state.notes || []) put(n);
+  for (const n of data.notes || []) put(n);
+
+  // by title union clips
+  const byTitle = new Map();
+  for (const v of clipMap.values()) {
+    const key = String(v.noteTitle || "").trim().toLowerCase() || v.noteId || "";
+    if (!key) continue;
+    if (!byTitle.has(key)) byTitle.set(key, []);
+    byTitle.get(key).push(v);
+  }
+  for (const n of nmap.values()) {
+    const list = byTitle.get(String(n.title || "").trim().toLowerCase()) || [];
+    const m = new Map();
+    for (const v of list) {
+      const k = v.id || String(v.data).slice(0, 40);
+      m.set(k, v);
+    }
+    n.voices = [...m.values()].map((v) => ({
+      id: v.id || uid(),
+      name: v.name || "",
+      data: v.data,
+      at: v.at || nowIso(),
+      mime: v.mime || "audio/webm",
+    }));
+  }
+
+  state.notes = [...nmap.values()];
+  if (Array.isArray(data.noteFolders) && data.noteFolders.length) {
+    const fm = new Map();
+    for (const f of [...(state.noteFolders || []), ...data.noteFolders]) {
+      if (f && f.id) fm.set(f.id, f);
+    }
+    state.noteFolders = [...fm.values()];
+  }
+  if (Array.isArray(data.links) && data.links.length) {
+    const lm = new Map();
+    for (const l of [...(state.links || []), ...data.links]) {
+      if (l && l.id) lm.set(l.id, l);
+    }
+    state.links = [...lm.values()];
+  }
+
+  await storeVoicesFromCloud(state.notes);
+  for (const n of state.notes) await refreshVoiceCache(n.id);
+  saveState();
+  render();
+  const vCount = state.notes.reduce((s, n) => s + noteVoices(n).length, 0);
+  toast("Объединено: заметок " + state.notes.length + ", голосовых " + vCount);
+  if (isCloudReady()) scheduleAutoSync();
+}
+
 function exportData() {
   const blob = new Blob(
     [JSON.stringify({ version: 1, links: state.links, categories: state.categories }, null, 2)],
@@ -3876,6 +4015,15 @@ function bindEvents() {
 
   // export / import
   document.getElementById("btn-export").addEventListener("click", exportData);
+  document.getElementById("btn-export-full")?.addEventListener("click", () => exportFullBackup());
+  document.getElementById("btn-import-full")?.addEventListener("click", () => {
+    document.getElementById("import-full-file").click();
+  });
+  document.getElementById("import-full-file")?.addEventListener("change", (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (f) importFullBackup(f);
+    e.target.value = "";
+  });
   document.getElementById("btn-import").addEventListener("click", () => {
     document.getElementById("import-file").click();
   });
@@ -4132,8 +4280,8 @@ loadAppConfig()
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.60 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.60");
+    if (el) el.textContent = "Сборка 2026.10.08.61 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.61");
   } catch (_) {}
 })();
 

@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.41";
+const APP_BUILD = "2026.10.08.42";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -1207,7 +1207,8 @@ function renderNotesView() {
           </button>
           ${
             expanded
-              ? `<div class="keep-card-text">${escapeHtml(n.text || "")}</div>`
+              ? `<div class="keep-card-text">${escapeHtml(n.text || "")}</div>
+                 <button type="button" class="secondary-btn keep-edit-btn" data-note-edit="${n.id}">Открыть / редактировать</button>`
               : ""
           }
           ${
@@ -1230,6 +1231,9 @@ function renderNotesView() {
               : ""
           }
           <div class="keep-card-tools">
+            <button type="button" class="keep-tool" data-note-edit="${n.id}" title="Открыть заметку" aria-label="Открыть заметку">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            </button>
             <button type="button" class="keep-tool" data-note-pin="${n.id}" title="Закрепить" aria-label="Закрепить">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="${n.pinned ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.8"><path d="M12 3l2.2 6.4H21l-5.3 3.9 2 6.4L12 16.8 6.3 19.7l2-6.4L3 9.4h6.8L12 3z"/></svg>
             </button>
@@ -3416,12 +3420,27 @@ function bindEvents() {
     }
   });
 
+  document.getElementById("grid")?.addEventListener("dblclick", (e) => {
+    const open = e.target.closest("[data-note-open]");
+    if (open && state.filter.startsWith("notes:")) {
+      e.preventDefault();
+      openNoteStoreModal(open.getAttribute("data-note-open"));
+    }
+  });
+
   document.getElementById("grid")?.addEventListener("click", (e) => {
     const vplay = e.target.closest("[data-note-voice-play]");
     const vdel = e.target.closest("[data-note-voice-del]");
+    const editNote = e.target.closest("[data-note-edit]");
     const open = e.target.closest("[data-note-open]");
     const del = e.target.closest("[data-note-del]");
     const pin = e.target.closest("[data-note-pin]");
+    if (editNote) {
+      e.preventDefault();
+      e.stopPropagation();
+      openNoteStoreModal(editNote.getAttribute("data-note-edit"));
+      return;
+    }
     if (vplay) {
       e.preventDefault();
       e.stopPropagation();
@@ -3773,8 +3792,8 @@ loadAppConfig().then(() => applyHashCredentials());
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.41 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.41");
+    if (el) el.textContent = "Сборка 2026.10.08.42 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.42");
   } catch (_) {}
 })();
 

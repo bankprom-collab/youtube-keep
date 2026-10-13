@@ -2437,3 +2437,16 @@ img {
 .keep-card.is-open .keep-card-line {
   margin-bottom: 8px;
 }
+
+
+.keep-edit-btn {
+  margin-top: 8px;
+  align-self: flex-start;
+  height: 34px;
+  font-size: 0.85rem;
+}
+
+.keep-card.is-open {
+  display: flex;
+  flex-direction: column;
+}

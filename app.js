@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.43";
+const APP_BUILD = "2026.10.08.44";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -235,22 +235,26 @@ function loadState() {
 function saveState(options = {}) {
   try {
     const notesLite = (state.notes || []).map(function (n) {
-      const c = Object.assign({}, n);
-      if (n.voices) {
-        c.voices = n.voices.map(function (v) {
-          return { id: v.id, ref: v.ref || v.id, name: v.name, at: v.at, mime: v.mime, data: "" };
-        });
-      }
-      if (n.voice && n.voice.data) {
-        c.voice = {
-          id: n.voice.id || n.voice.ref || uid(),
-          ref: n.voice.ref || n.voice.id,
-          name: n.voice.name,
-          at: n.voice.at,
-          mime: n.voice.mime,
-          data: "",
-        };
-      }
+      const c = {
+        id: n.id,
+        folderId: n.folderId || null,
+        title: n.title || "",
+        text: n.text || "",
+        color: n.color || "default",
+        pinned: !!n.pinned,
+        createdAt: n.createdAt || "",
+        updatedAt: n.updatedAt || "",
+        voices: noteVoices(n).map(function (v) {
+          return {
+            id: v.id,
+            ref: v.ref || v.id,
+            name: v.name || "",
+            at: v.at || "",
+            mime: v.mime || "",
+            data: "",
+          };
+        }),
+      };
       return c;
     });
     localStorage.setItem(
@@ -1329,17 +1333,41 @@ async function hydrateVoices(note) {
 
 const voiceCache = {}; /* noteId -> hydrated list */
 
+async function hydrateAllVoices() {
+  for (const n of state.notes || []) {
+    try {
+      await refreshVoiceCache(n.id);
+    } catch (_) {}
+  }
+}
+
 async function refreshVoiceCache(noteId) {
   const n = (state.notes || []).find(function (x) {
     return x.id === noteId;
   });
   if (!n) {
-    voiceCache[noteId] = [];
-    return [];
+    if (!voiceCache[noteId]) voiceCache[noteId] = [];
+    return voiceCache[noteId];
+  }
+  const memory = noteVoices(n).filter(function (v) {
+    return v && v.data;
+  });
+  if (memory.length) {
+    voiceCache[noteId] = memory;
+    n.voices = memory;
+    return memory;
   }
   const list = await hydrateVoices(n);
-  voiceCache[noteId] = list;
-  return list;
+  const filled = list.filter(function (v) {
+    return v && v.data;
+  });
+  if (filled.length) {
+    voiceCache[noteId] = filled;
+    n.voices = filled;
+  } else if (!voiceCache[noteId]) {
+    voiceCache[noteId] = [];
+  }
+  return voiceCache[noteId] || filled;
 }
 
 
@@ -1632,10 +1660,9 @@ async function startVoiceRecord(noteId) {
       name: "Запись №" + num,
     };
     arr.push(clip);
+    // KEEP full audio in memory so the note does not lose clips
+    n.voices = arr;
     voiceCache[targetId] = arr;
-    n.voices = arr.map(function (v) {
-      return { id: v.id, ref: v.ref || v.id, name: v.name, at: v.at, mime: v.mime, data: "" };
-    });
     delete n.voice;
     n.updatedAt = nowIso();
     if (!n.title || n.title === "Заметка") n.title = "Голосовая заметка";
@@ -3797,14 +3824,20 @@ if ("serviceWorker" in navigator) {
 loadState();
 bindEvents();
 render();
-loadAppConfig().then(() => applyHashCredentials());
+loadAppConfig()
+  .then(() => applyHashCredentials())
+  .then(() => hydrateAllVoices())
+  .then(() => {
+    render();
+    if (String(state.filter).startsWith("notes:")) render();
+  });
 
 // Mark app as alive for the user / debugging
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.43 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.43");
+    if (el) el.textContent = "Сборка 2026.10.08.44 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.44");
   } catch (_) {}
 })();
 

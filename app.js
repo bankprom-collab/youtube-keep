@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.57";
+const APP_BUILD = "2026.10.08.58";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -1673,12 +1673,26 @@ async function startVoiceRecord(noteId) {
       bar.textContent = "Сохранено записей: " + arr.length + ". Можно записать следующую.";
     }
     toast("Готово: Запись №" + num + " (всего " + arr.length + ")");
-    // refresh board later without destroying editor
     clearTimeout(voiceState.renderTimer);
     voiceState.renderTimer = setTimeout(function () {
       render();
       renderVoicePlayer(targetId);
     }, 400);
+    // always upload immediately so phone/PC do not diverge
+    if (isCloudReady()) {
+      syncPush({ silent: true, skipStatus: true })
+        .then(function () {
+          return syncPull({ silent: true, skipStatus: true });
+        })
+        .then(function () {
+          return hydrateAllVoices();
+        })
+        .then(function () {
+          renderVoicePlayer(targetId);
+          render();
+        })
+        .catch(function () {});
+    }
   };
 
   try {
@@ -2480,7 +2494,28 @@ async function storeVoicesFromCloud(notesList) {
 async function notesForSync() {
   const out = [];
   for (const n of state.notes || []) {
-    const fullVoices = await hydrateVoices(n);
+    let fullVoices = await hydrateVoices(n);
+    const cached = (voiceCache[n.id] || []).filter(function (v) {
+      return v && v.data;
+    });
+    if (cached.length > fullVoices.filter(function (v) {
+      return v && v.data;
+    }).length) {
+      fullVoices = cached;
+    }
+    // merge cache + hydrate unique by id
+    const um = new Map();
+    for (const v of [...fullVoices, ...(voiceCache[n.id] || [])]) {
+      if (!v) continue;
+      const key = v.id || v.ref || String(v.data || "").slice(0, 40);
+      const prev = um.get(key);
+      if (!prev || String(v.data || "").length > String(prev.data || "").length) {
+        um.set(key, v);
+      }
+    }
+    fullVoices = [...um.values()].filter(function (v) {
+      return v && v.data;
+    });
     out.push({
       id: n.id,
       folderId: n.folderId || null,
@@ -4030,8 +4065,8 @@ loadAppConfig()
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.57 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.57");
+    if (el) el.textContent = "Сборка 2026.10.08.58 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.58");
   } catch (_) {}
 })();
 

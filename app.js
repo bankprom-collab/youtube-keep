@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.55";
+const APP_BUILD = "2026.10.08.56";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -896,7 +896,9 @@ function noteFolderChildren(parentId) {
 }
 
 function notesInFolder(folderId) {
-  return (state.notes || []).filter((n) => (n.folderId || null) === (folderId || null));
+  // All notes view: show everything (including notes inside folders)
+  if (!folderId) return (state.notes || []).slice();
+  return (state.notes || []).filter((n) => (n.folderId || null) === folderId);
 }
 
 function noteFolderDescendantIds(id) {
@@ -3961,8 +3963,8 @@ loadAppConfig()
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.55 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.55");
+    if (el) el.textContent = "Сборка 2026.10.08.56 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.56");
   } catch (_) {}
 })();
 

@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.40";
+const APP_BUILD = "2026.10.08.41";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -50,6 +50,8 @@ const state = {
   notesOpen: true,
   expandedNoteFolders: new Set(),
   notesTreeOpen: false,
+  expandedNoteIds: new Set(),
+  notesCompact: true,
   importItems: [],
   sync: {
     token: "",
@@ -1184,14 +1186,32 @@ function renderNotesView() {
         const labelName = n.folderId
           ? (state.noteFolders || []).find((f) => f.id === n.folderId)?.name
           : "";
+        const expanded = state.expandedNoteIds.has(n.id);
+        const voiceCount = noteVoices(n).length;
+        const preview = String(n.text || "").replace(/\s+/g, " ").slice(0, 120);
         return `
-        <article class="keep-card" style="background:${bg}" data-note-id="${n.id}">
+        <article class="keep-card ${expanded ? "is-open" : "is-closed"}" style="background:${bg}" data-note-id="${n.id}">
           <button type="button" class="keep-card-open" data-note-open="${n.id}">
-            <h3 class="keep-card-title">${escapeHtml(n.title || "")}</h3>
-            <div class="keep-card-text">${escapeHtml(n.text || "")}</div>
+            <div class="keep-card-line">
+              <span class="keep-chevron ${expanded ? "is-open" : ""}">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>
+              </span>
+              <span class="keep-line-title">${escapeHtml(n.title || "Заметка")}</span>
+              ${voiceCount ? `<span class="keep-line-badge">${voiceCount} голос</span>` : ""}
+            </div>
+            ${
+              !expanded && preview
+                ? `<div class="keep-line-preview">${escapeHtml(preview)}${String(n.text || "").length > 120 ? "…" : ""}</div>`
+                : ""
+            }
           </button>
           ${
-            noteVoices(n).length
+            expanded
+              ? `<div class="keep-card-text">${escapeHtml(n.text || "")}</div>`
+              : ""
+          }
+          ${
+            expanded && noteVoices(n).length
               ? `<div class="keep-card-voice">
                    <div class="voice-player-label">Голосовые (${noteVoices(n).length})</div>
                    ${noteVoices(n)
@@ -1220,7 +1240,7 @@ function renderNotesView() {
         </article>`;
       })
       .join("");
-  }
+    }
 }
 
 const KEEP_SWATCHES = [
@@ -3022,6 +3042,14 @@ document.addEventListener("click", function (e) {
       if (typeof stopVoiceRecord === "function") stopVoiceRecord();
       return;
     }
+    const comp = e.target.closest("[data-notes-compact]");
+    if (comp) {
+      e.preventDefault();
+      state.notesCompact = !state.notesCompact;
+      if (state.notesCompact) state.expandedNoteIds.clear();
+      render();
+      return;
+    }
     const menu = e.target.closest("#btn-menu");
     if (menu) {
       e.preventDefault();
@@ -3428,7 +3456,14 @@ function bindEvents() {
     }
     if (open) {
       e.preventDefault();
-      openNoteStoreModal(open.getAttribute("data-note-open"));
+      const nid = open.getAttribute("data-note-open");
+      if (state.notesCompact) {
+        if (state.expandedNoteIds.has(nid)) state.expandedNoteIds.delete(nid);
+        else state.expandedNoteIds.add(nid);
+        render();
+        return;
+      }
+      openNoteStoreModal(nid);
       return;
     }
     if (del && state.filter.startsWith("notes:")) {
@@ -3738,8 +3773,8 @@ loadAppConfig().then(() => applyHashCredentials());
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.40 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.40");
+    if (el) el.textContent = "Сборка 2026.10.08.41 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.41");
   } catch (_) {}
 })();
 

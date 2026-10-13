@@ -2363,3 +2363,77 @@ img {
   position: relative;
   z-index: 2;
 }
+
+
+.keep-top-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.keep-top-row .keep-compose {
+  flex: 1;
+}
+
+.keep-card.is-closed {
+  padding: 8px 12px;
+}
+
+.keep-card.is-closed .keep-card-open {
+  padding: 0;
+}
+
+.keep-card-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.keep-chevron {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  color: var(--ink-3);
+  flex-shrink: 0;
+  transition: transform 160ms var(--ease);
+}
+
+.keep-chevron.is-open {
+  transform: rotate(180deg);
+  color: var(--accent);
+}
+
+.keep-line-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 650;
+  font-size: 0.95rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.keep-line-badge {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(26, 22, 18, 0.07);
+  color: var(--ink-2);
+}
+
+.keep-line-preview {
+  margin-top: 4px;
+  font-size: 0.82rem;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.keep-card.is-open .keep-card-line {
+  margin-bottom: 8px;
+}

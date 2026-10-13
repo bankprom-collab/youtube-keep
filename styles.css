@@ -2586,3 +2586,29 @@ img {
 .keep-masonry {
   padding-left: calc(var(--content-pad) + 4px) !important;
 }
+
+
+/* Folders strip centered */
+.folder-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px calc(var(--content-pad) + 12px) 18px !important;
+  columns: initial;
+}
+
+.keep-labels {
+  justify-content: center;
+  padding-left: 16px !important;
+  padding-right: 16px !important;
+}
+
+.folder-strip-label {
+  width: 100%;
+  text-align: center;
+}
+
+#note-store-folder-select {
+  margin-top: 6px;
+}

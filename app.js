@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.48";
+const APP_BUILD = "2026.10.08.49";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -1801,6 +1801,23 @@ function openNoteStoreModal(noteId = null, folderId = null) {
     ? "Заметка"
     : "Новая заметка";
   const folderLine = document.getElementById("note-store-folder");
+  const folderSelect = document.getElementById("note-store-folder-select");
+  if (folderSelect) {
+    const opts = ['<option value="">Без папки</option>'];
+    const walk = (parentId, depth) => {
+      const kids = noteFolderChildren(parentId);
+      for (const f of kids) {
+        opts.push(
+          `<option value="${f.id}" ${
+            f.id === (note ? note.folderId : state.editingNoteFolderParentId) ? "selected" : ""
+          }>${" ".repeat(depth * 2)}${escapeHtml(f.name)}</option>`
+        );
+        walk(f.id, depth + 1);
+      }
+    };
+    walk(null, 0);
+    folderSelect.innerHTML = opts.join("");
+  }
   if (folderLine) {
     folderLine.textContent = fname
       ? "Папка: " + fname
@@ -2873,7 +2890,13 @@ async function syncAll() {
     await syncPush({ silent: true, skipStatus: true });
     await hydrateAllVoices();
     state.sync.status = "ok";
-    setSyncMessage("Синхронизировано. Данные одинаковы на всех устройствах.");
+    const nCount = (state.notes || []).length;
+    const vCount = (state.notes || []).reduce(function (s, n) {
+      return s + noteVoices(n).length;
+    }, 0);
+    setSyncMessage(
+      "Синхронизировано. Заметок: " + nCount + ", голосовых: " + vCount + "."
+    );
   } catch (err) {
     state.sync.status = "err";
     setSyncMessage(explainGitHubError(err, err.status), true);
@@ -3693,10 +3716,8 @@ function bindEvents() {
     e.preventDefault();
     const title = document.getElementById("note-store-name").value.trim() || "Заметка";
     const text = document.getElementById("note-store-text").value;
-    const folderId =
-      state.editingNoteFolderParentId !== undefined && state.editingNoteFolderParentId !== null
-        ? state.editingNoteFolderParentId
-        : currentNotesFolderId();
+    const sel = document.getElementById("note-store-folder-select");
+    const folderId = sel && sel.value !== "" ? sel.value : null;
     const color = state.selectedNoteColor || "default";
     if (state.editingNoteId) {
       const n = state.notes.find((x) => x.id === state.editingNoteId);
@@ -3853,8 +3874,8 @@ loadAppConfig()
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.48 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.48");
+    if (el) el.textContent = "Сборка 2026.10.08.49 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.49");
   } catch (_) {}
 })();
 

@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.64";
+const APP_BUILD = "2026.10.08.65";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -3222,7 +3222,10 @@ async function syncPull(opts = {}) {
         Math.max(cloudClips, localClips) +
         ")"
     );
-    if (!opts.silent) toast("Данные загружены из облака");
+    if (!opts.silent) {
+      const vv = (state.notes || []).reduce((s, n) => s + noteVoices(n).length, 0);
+      toast("Из облака: заметок " + state.notes.length + ", голосовых " + vv);
+    }
   } catch (err) {
     state.sync.status = "err";
     if (!opts.silent) {
@@ -3580,6 +3583,31 @@ function renderColorPicks(containerId, colors, selectedId, onPick) {
 }
 
 
+window.__forcePull = function () {
+  if (!isCloudReady()) {
+    toast("Нет облака");
+    return;
+  }
+  syncPull({ silent: false })
+    .then(() => hydrateAllVoices())
+    .then(() => {
+      render();
+      const v = (state.notes || []).reduce((s, n) => s + noteVoices(n).length, 0);
+      toast("Принято: заметок " + state.notes.length + ", голосовых " + v);
+    })
+    .catch(() => {});
+};
+window.__forcePush = function () {
+  if (!isCloudReady()) {
+    toast("Нет облака");
+    return;
+  }
+  syncPush({ silent: false })
+    .then(() => {
+      toast("Всё с этого устройства отправлено");
+    })
+    .catch(() => {});
+};
 window.exportFullBackup = function () {
   exportFullBackup();
 };
@@ -4103,6 +4131,12 @@ function bindEvents() {
 
   // export / import
   document.getElementById("btn-export").addEventListener("click", exportData);
+  document.getElementById("btn-force-pull")?.addEventListener("click", () => {
+    if (window.__forcePull) window.__forcePull();
+  });
+  document.getElementById("btn-force-push")?.addEventListener("click", () => {
+    if (window.__forcePush) window.__forcePush();
+  });
   document.getElementById("btn-export-full")?.addEventListener("click", () => exportFullBackup());
   document.getElementById("btn-import-full")?.addEventListener("click", () => {
     document.getElementById("import-full-file").click();
@@ -4375,8 +4409,8 @@ loadAppConfig()
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.64 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.64");
+    if (el) el.textContent = "Сборка 2026.10.08.65 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.65");
   } catch (_) {}
 })();
 

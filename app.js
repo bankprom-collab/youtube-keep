@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.38";
+const APP_BUILD = "2026.10.08.39";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -2378,7 +2378,55 @@ function explainGitHubError(err, status) {
   return `Ошибка: ${msg || status || "неизвестно"}`;
 }
 
-function syncPayload() {
+async function storeVoicesFromCloud(notesList) {
+  for (const n of notesList || []) {
+    const arr = Array.isArray(n.voices) ? n.voices : [];
+    for (const v of arr) {
+      if (v && v.data) {
+        const id = v.id || v.ref || uid();
+        try {
+          await idbPut(id, v.data, { mime: v.mime, at: v.at });
+        } catch (_) {}
+      }
+    }
+    if (n.voice && n.voice.data) {
+      try {
+        await idbPut(n.voice.id || n.voice.ref || uid(), n.voice.data, { mime: n.voice.mime, at: n.voice.at });
+      } catch (_) {}
+    }
+  }
+}
+
+async function notesForSync() {
+  const out = [];
+  for (const n of state.notes || []) {
+    const fullVoices = await hydrateVoices(n);
+    out.push({
+      id: n.id,
+      folderId: n.folderId || null,
+      title: n.title || "Заметка",
+      text: n.text || "",
+      color: n.color || "default",
+      pinned: !!n.pinned,
+      createdAt: n.createdAt || "",
+      updatedAt: n.updatedAt || "",
+      voices: fullVoices.map(function (v) {
+        return {
+          id: v.id,
+          ref: v.ref || v.id,
+          name: v.name || "",
+          at: v.at || "",
+          mime: v.mime || "audio/webm",
+          data: v.data || "",
+        };
+      }),
+    });
+  }
+  return out;
+}
+
+async function syncPayload() {
+  const notes = await notesForSync();
   return JSON.stringify(
     {
       version: 2,
@@ -2387,7 +2435,7 @@ function syncPayload() {
       categories: state.categories,
       deletedCategoryIds: state.deletedCategoryIds || [],
       noteFolders: state.noteFolders || [],
-      notes: state.notes || [],
+      notes: notes,
       deletedNoteFolderIds: state.deletedNoteFolderIds || [],
       deletedNoteIds: state.deletedNoteIds || [],
     },
@@ -2474,7 +2522,7 @@ async function syncPush(opts = {}) {
       description: "YouTube Keep sync",
       public: false,
       files: {
-        "youtube-keep.json": { content: syncPayload() },
+        "youtube-keep.json": { content: await syncPayload() },
       },
     });
 
@@ -2493,7 +2541,7 @@ async function syncPush(opts = {}) {
           body: JSON.stringify({
             description: "YouTube Keep sync",
             public: false,
-            files: { "youtube-keep.json": { content: syncPayload() } },
+            files: { "youtube-keep.json": { content: await syncPayload() } },
           }),
         });
       }
@@ -2711,6 +2759,9 @@ async function syncPull(opts = {}) {
         }
       }
       state.notes = [...nmap.values()];
+      storeVoicesFromCloud([...(state.notes || []), ...(data.notes || [])]).then(function () {
+        for (const n of state.notes || []) refreshVoiceCache(n.id);
+      });
     }
 
     saveState({ sync: false });
@@ -3687,8 +3738,8 @@ loadAppConfig().then(() => applyHashCredentials());
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.38 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.38");
+    if (el) el.textContent = "Сборка 2026.10.08.39 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.39");
   } catch (_) {}
 })();
 

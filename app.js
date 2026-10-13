@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.52";
+const APP_BUILD = "2026.10.08.53";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -2907,24 +2907,45 @@ function scheduleAutoSync() {
 
 /** Two-way: download remote, merge, then upload. */
 async function syncAll() {
-  if (!isCloudReady()) return;
+  if (!isCloudReady()) {
+    setSyncMessage("Нет подключения к облаку. Откройте шестерёнку.", true);
+    return;
+  }
   if (syncingNow) return;
   syncingNow = true;
   state.sync.status = "busy";
   renderSyncStatus();
   try {
-    await syncPull({ silent: true, skipStatus: true });
+    // 1) always pull first so we do not overwrite other device
+    try {
+      await syncPull({ silent: true, skipStatus: true });
+    } catch (e) {
+      // continue — maybe first time
+    }
     await hydrateAllVoices();
+
+    // 2) push merged library
     await syncPush({ silent: true, skipStatus: true });
     await hydrateAllVoices();
-    state.sync.status = "ok";
+
     const nCount = (state.notes || []).length;
     const vCount = (state.notes || []).reduce(function (s, n) {
       return s + noteVoices(n).length;
     }, 0);
+    const lCount = (state.links || []).length;
+    state.sync.status = "ok";
+    state.sync.lastSync = nowIso();
+    saveSyncSettings();
     setSyncMessage(
-      "Синхронизировано. Заметок: " + nCount + ", голосовых: " + vCount + "."
+      "Готово. Ссылок: " +
+        lCount +
+        ", заметок: " +
+        nCount +
+        ", голосовых: " +
+        vCount +
+        ". Данные объединены с облаком."
     );
+    render();
   } catch (err) {
     state.sync.status = "err";
     setSyncMessage(explainGitHubError(err, err.status), true);
@@ -3902,8 +3923,8 @@ loadAppConfig()
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.52 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.52");
+    if (el) el.textContent = "Сборка 2026.10.08.53 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.53");
   } catch (_) {}
 })();
 

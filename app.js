@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.51";
+const APP_BUILD = "2026.10.08.52";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -2869,7 +2869,6 @@ async function syncPull(opts = {}) {
           for (const n of state.notes || []) refreshVoiceCache(n.id);
         });
       }
-    }
 
     saveState({ sync: false });
     state.sync.lastSync = nowIso();
@@ -3903,8 +3902,8 @@ loadAppConfig()
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.51 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.51");
+    if (el) el.textContent = "Сборка 2026.10.08.52 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.52");
   } catch (_) {}
 })();
 

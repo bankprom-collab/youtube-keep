@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.62";
+const APP_BUILD = "2026.10.08.63";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -2704,6 +2704,66 @@ async function syncPayload() {
   );
 }
 
+function buildGistFiles(notesFull) {
+  const files = {};
+  const noteLite = (notesFull || []).map(function (n) {
+    return {
+      id: n.id,
+      folderId: n.folderId || null,
+      title: n.title || "",
+      text: n.text || "",
+      color: n.color || "default",
+      pinned: !!n.pinned,
+      createdAt: n.createdAt || "",
+      updatedAt: n.updatedAt || "",
+      voices: (n.voices || []).map(function (v) {
+        return {
+          id: v.id || v.ref,
+          ref: v.id || v.ref,
+          name: v.name || "",
+          at: v.at || "",
+          mime: v.mime || "",
+          data: "",
+        };
+      }),
+    };
+  });
+  const payload = {
+    version: 4,
+    updatedAt: nowIso(),
+    links: state.links,
+    categories: state.categories,
+    deletedCategoryIds: state.deletedCategoryIds || [],
+    noteFolders: state.noteFolders || [],
+    notes: noteLite,
+    deletedNoteFolderIds: state.deletedNoteFolderIds || [],
+    deletedNoteIds: state.deletedNoteIds || [],
+  };
+  files["youtube-keep.json"] = {
+    content: JSON.stringify(payload, null, 2),
+  };
+  // one file per audio clip — never lost in merge
+  for (const n of notesFull || []) {
+    for (const v of n.voices || []) {
+      if (!v || !v.data) continue;
+      const id = (v.id || v.ref || uid()).replace(/[^a-zA-Z0-9_-]/g, "");
+      if (!id) continue;
+      files["clip_" + id + ".json"] = {
+        content: JSON.stringify({
+          id: v.id || id,
+          noteId: n.id,
+          noteTitle: n.title || "",
+          name: v.name || "",
+          at: v.at || "",
+          mime: v.mime || "audio/webm",
+          data: v.data,
+        }),
+      };
+    }
+  }
+  return files;
+}
+
 async function syncPush(opts = {}) {
   // EMPTY_LOCAL_PROTECT: never wipe cloud with an empty library
   try {
@@ -2781,9 +2841,7 @@ async function syncPush(opts = {}) {
     const body = JSON.stringify({
       description: "YouTube Keep sync",
       public: false,
-      files: {
-        "youtube-keep.json": { content: await syncPayload() },
-      },
+      files: await buildGistFiles(await notesForSync()),
     });
 
     let res;
@@ -2801,7 +2859,7 @@ async function syncPush(opts = {}) {
           body: JSON.stringify({
             description: "YouTube Keep sync",
             public: false,
-            files: { "youtube-keep.json": { content: await syncPayload() } },
+            files: await buildGistFiles(await notesForSync()),
           }),
         });
       }
@@ -2869,10 +2927,22 @@ async function syncPull(opts = {}) {
       throw e;
     }
     const gist = await res.json();
-    const file = gist.files?.["youtube-keep.json"] || Object.values(gist.files || {})[0];
+    const gf = gist.files || {};
+    const file = gf["youtube-keep.json"] || Object.values(gf)[0];
     if (!file?.content) throw new Error("В облаке пока нет данных — сначала нажмите «Отправить» на главном устройстве.");
 
     const data = parseJsonSafe(file.content);
+    // collect every clip_* file
+    data.voiceClips = data.voiceClips || [];
+    for (const name of Object.keys(gf)) {
+      if (!name.startsWith("clip_")) continue;
+      try {
+        const clip = parseJsonSafe(gf[name].content || "");
+        if (clip && clip.data) {
+          data.voiceClips.push(clip);
+        }
+      } catch (_) {}
+    }
     if (!Array.isArray(data.links)) throw new Error("Некорректный формат данных");
 
     // merge links without losing notes from either side
@@ -4288,8 +4358,8 @@ loadAppConfig()
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.62 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.62");
+    if (el) el.textContent = "Сборка 2026.10.08.63 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.63");
   } catch (_) {}
 })();
 

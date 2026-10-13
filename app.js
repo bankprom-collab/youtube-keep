@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.49";
+const APP_BUILD = "2026.10.08.51";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -2757,89 +2757,118 @@ async function syncPull(opts = {}) {
       l.categoryId && !validIds.has(l.categoryId) ? { ...l, categoryId: null } : l
     );
 
-    // Notes & note folders merge
-    {
-      const deadF = new Set([
-        ...(state.deletedNoteFolderIds || []),
-        ...(data.deletedNoteFolderIds || []),
-      ]);
-      const deadN = new Set([
-        ...(state.deletedNoteIds || []),
-        ...(data.deletedNoteIds || []),
-      ]);
-      state.deletedNoteFolderIds = [...deadF];
-      state.deletedNoteIds = [...deadN];
+    // Notes & note folders merge — UNION both devices
+      {
+        const deadF = new Set([
+          ...(state.deletedNoteFolderIds || []),
+          ...(data.deletedNoteFolderIds || []),
+        ]);
+        const deadN = new Set([
+          ...(state.deletedNoteIds || []),
+          ...(data.deletedNoteIds || []),
+        ]);
+        state.deletedNoteFolderIds = [...deadF];
+        state.deletedNoteIds = [...deadN];
 
-      const fmap = new Map(); // id -> folder
-      const byName = new Map(); // parent::name -> id
-      const putFolder = (f) => {
-        if (!f?.id || deadF.has(f.id)) return;
-        const name = String(f.name || "Папка").trim();
-        const parentId = f.parentId || null;
-        const key = `${parentId || ""}::${name.toLowerCase()}`;
-        const existingId = byName.get(key);
-        const item = {
-          id: f.id,
-          name,
-          parentId,
-          color: f.color || "#c2410c",
-          updatedAt: f.updatedAt || "",
-        };
-        if (existingId && existingId !== f.id) {
-          // same name in same parent — keep both ids but prefer one entry
-          const prev = fmap.get(existingId);
-          if (prev && (f.updatedAt || "") > (prev.updatedAt || "")) {
-            fmap.set(existingId, { ...item, id: existingId });
+        const fmap = new Map();
+        const putFolder = (f) => {
+          if (!f || !f.id || deadF.has(f.id)) return;
+          const item = {
+            id: f.id,
+            name: String(f.name || "Папка").trim(),
+            parentId: f.parentId || null,
+            color: f.color || "#c2410c",
+            updatedAt: f.updatedAt || "",
+          };
+          const prev = fmap.get(f.id);
+          if (!prev || (item.updatedAt || "") >= (prev.updatedAt || "")) {
+            fmap.set(f.id, item);
           }
-          return;
-        }
-        const prev = fmap.get(f.id);
-        if (!prev || (f.updatedAt || "") >= (prev.updatedAt || "")) {
-          fmap.set(f.id, item);
-          byName.set(key, f.id);
-        }
-      };
-      for (const f of [...(state.noteFolders || []), ...(data.noteFolders || [])]) {
-        putFolder(f);
-      }
-      state.noteFolders = [...fmap.values()];
-
-      const nmap = new Map();
-      for (const n of [...(state.notes || []), ...(data.notes || [])]) {
-        if (!n?.id || deadN.has(n.id)) continue;
-        const prev = nmap.get(n.id);
-        const item = {
-          id: n.id,
-          folderId: n.folderId || null,
-          title: n.title || "Заметка",
-          text: String(n.text || n.body || n.note || ""),
-          updatedAt: n.updatedAt || "",
-          createdAt: n.createdAt || "",
         };
-        if (!prev) nmap.set(item.id, item);
-        else {
-          // keep longer text / newer meta
-          const winner = (item.updatedAt || "") >= (prev.updatedAt || "") ? item : prev;
-          const withText =
-            (item.text || "").length >= (prev.text || "").length ? item : prev;
-          nmap.set(item.id, {
+        for (const f of state.noteFolders || []) putFolder(f);
+        for (const f of data.noteFolders || []) putFolder(f);
+        state.noteFolders = [...fmap.values()];
+
+        const nmap = new Map();
+        const putNote = (raw) => {
+          if (!raw || !raw.id || deadN.has(raw.id)) return;
+          const prev = nmap.get(raw.id);
+          const item = {
+            id: raw.id,
+            folderId: raw.folderId || null,
+            title: raw.title || "Заметка",
+            text: raw.text || "",
+            color: raw.color || "default",
+            pinned: !!raw.pinned,
+            createdAt: raw.createdAt || "",
+            updatedAt: raw.updatedAt || "",
+          };
+          if (!prev) {
+            nmap.set(raw.id, item);
+            return;
+          }
+          const winner =
+            (item.updatedAt || "") >= (prev.updatedAt || "") ? item : prev;
+          nmap.set(raw.id, {
+            ...prev,
             ...winner,
-            color: winner.color || withText.color || "default",
-            pinned: !!(winner.pinned || withText.pinned),
-            voices: [
-              ...noteVoices(withText),
-              ...noteVoices(winner),
-            ].filter((v, i, arr) => v && v.data && arr.findIndex((x) => x.data === v.data) === i),
-            voice: null,
-            title: winner.title && winner.title !== "Заметка" ? winner.title : withText.title,
-            text: withText.text || winner.text || "",
+            title:
+              winner.title && winner.title !== "Заметка"
+                ? winner.title
+                : prev.title,
+            text:
+              (item.text || "").length >= (prev.text || "").length
+                ? item.text
+                : prev.text,
+            pinned: !!(prev.pinned || item.pinned),
           });
+        };
+        for (const n of state.notes || []) putNote(n);
+        for (const n of data.notes || []) putNote(n);
+
+        const voiceByNote = new Map();
+        const collectVoices = (n) => {
+          const out = [];
+          if (!n) return out;
+          if (Array.isArray(n.voices)) {
+            for (const v of n.voices) if (v && (v.data || v.ref || v.id)) out.push(v);
+          }
+          if (n.voice && (n.voice.data || n.voice.ref || n.voice.id)) out.push(n.voice);
+          return out;
+        };
+        const addVoices = (noteId, list) => {
+          if (!noteId) return;
+          const map = voiceByNote.get(noteId) || new Map();
+          for (const v of list) {
+            const key = v.id || v.ref || String(v.data || "").slice(0, 64);
+            const prev = map.get(key);
+            if (!prev || String(v.data || "").length > String(prev.data || "").length) {
+              map.set(key, v);
+            }
+          }
+          voiceByNote.set(noteId, map);
+        };
+        for (const n of state.notes || []) addVoices(n.id, collectVoices(n));
+        for (const n of data.notes || []) addVoices(n.id, collectVoices(n));
+
+        for (const n of nmap.values()) {
+          const vm = voiceByNote.get(n.id) || new Map();
+          n.voices = [...vm.values()].map((v) => ({
+            id: v.id || v.ref || uid(),
+            ref: v.ref || v.id,
+            name: v.name || "",
+            at: v.at || "",
+            mime: v.mime || "audio/webm",
+            data: v.data || "",
+          }));
+          delete n.voice;
         }
+
+        state.notes = [...nmap.values()];
+        storeVoicesFromCloud(state.notes).then(function () {
+          for (const n of state.notes || []) refreshVoiceCache(n.id);
+        });
       }
-      state.notes = [...nmap.values()];
-      storeVoicesFromCloud([...(state.notes || []), ...(data.notes || [])]).then(function () {
-        for (const n of state.notes || []) refreshVoiceCache(n.id);
-      });
     }
 
     saveState({ sync: false });
@@ -3874,8 +3903,8 @@ loadAppConfig()
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.49 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.49");
+    if (el) el.textContent = "Сборка 2026.10.08.51 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.51");
   } catch (_) {}
 })();
 

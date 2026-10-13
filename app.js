@@ -3500,6 +3500,14 @@ function renderColorPicks(containerId, colors, selectedId, onPick) {
 }
 
 
+window.exportFullBackup = function () {
+  exportFullBackup();
+};
+window.__importFull = function () {
+  const el = document.getElementById("import-full-file");
+  if (el) el.click();
+};
+
 function bindEvents() {
   // filters
   document.getElementById("nav").addEventListener("click", (e) => {

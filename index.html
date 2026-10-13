@@ -104,8 +104,8 @@
           </button>
         </div>
         <div class="sidebar-actions">
-          <button class="ghost-btn" id="btn-export-full" type="button" title="Скачать всё с голосовыми">Полный бэкап</button>
-          <button class="ghost-btn" id="btn-import-full" type="button" title="Слить файл с другого устройства">Слить файл</button>
+          <button class="ghost-btn" id="btn-export-full" onclick="window.exportFullBackup && window.exportFullBackup()" type="button" title="Скачать всё с голосовыми">Полный бэкап</button>
+          <button class="ghost-btn" id="btn-import-full" onclick="window.__importFull && window.__importFull()" type="button" title="Слить файл с другого устройства">Слить файл</button>
         </div>
         <input type="file" id="import-full-file" accept="application/json,.json" hidden />
         <button class="secondary-btn" id="btn-import-bookmarks" type="button">

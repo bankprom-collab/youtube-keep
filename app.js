@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.45";
+const APP_BUILD = "2026.10.08.46";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -1794,9 +1794,22 @@ function updateVoiceUI(recording) {
 function openNoteStoreModal(noteId = null, folderId = null) {
   state.editingNoteId = noteId;
   const note = noteId ? (state.notes || []).find((n) => n.id === noteId) : null;
+  const fname = (function () {
+    const fid = note ? note.folderId : folderId !== null ? folderId : currentNotesFolderId();
+    const f = (state.noteFolders || []).find(function (x) {
+      return x.id === fid;
+    });
+    return f ? f.name : "";
+  })();
   document.getElementById("note-store-title").textContent = note
     ? "Заметка"
     : "Новая заметка";
+  const folderLine = document.getElementById("note-store-folder");
+  if (folderLine) {
+    folderLine.textContent = fname
+      ? "Папка: " + fname
+      : "Папка: Все заметки (без папки)";
+  }
   document.getElementById("note-store-name").value = note?.title || "";
   document.getElementById("note-store-text").value = note?.text || "";
   state.selectedNoteColor = note?.color || "default";
@@ -3682,7 +3695,10 @@ function bindEvents() {
     e.preventDefault();
     const title = document.getElementById("note-store-name").value.trim() || "Заметка";
     const text = document.getElementById("note-store-text").value;
-    const folderId = state.editingNoteFolderParentId || null;
+    const folderId =
+      state.editingNoteFolderParentId !== undefined && state.editingNoteFolderParentId !== null
+        ? state.editingNoteFolderParentId
+        : currentNotesFolderId();
     const color = state.selectedNoteColor || "default";
     if (state.editingNoteId) {
       const n = state.notes.find((x) => x.id === state.editingNoteId);
@@ -3836,8 +3852,8 @@ loadAppConfig()
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.45 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.45");
+    if (el) el.textContent = "Сборка 2026.10.08.46 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.46");
   } catch (_) {}
 })();
 

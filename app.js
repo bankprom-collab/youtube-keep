@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.58";
+const APP_BUILD = "2026.10.08.59";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -1678,20 +1678,9 @@ async function startVoiceRecord(noteId) {
       render();
       renderVoicePlayer(targetId);
     }, 400);
-    // always upload immediately so phone/PC do not diverge
+    // Debounced upload — frequent PATCH triggers GitHub secondary rate limit (403)
     if (isCloudReady()) {
-      syncPush({ silent: true, skipStatus: true })
-        .then(function () {
-          return syncPull({ silent: true, skipStatus: true });
-        })
-        .then(function () {
-          return hydrateAllVoices();
-        })
-        .then(function () {
-          renderVoicePlayer(targetId);
-          render();
-        })
-        .catch(function () {});
+      scheduleAutoSync();
     }
   };
 
@@ -2969,10 +2958,11 @@ function isCloudReady() {
 
 function scheduleAutoSync() {
   if (!isCloudReady() || !state.sync.auto) return;
+  if (state.sync.rateLimitedUntil && Date.now() < state.sync.rateLimitedUntil) return;
   clearTimeout(autoSyncTimer);
-  autoSyncTimer = setTimeout(() => {
-    syncAll().catch(() => {});
-  }, 800);
+  autoSyncTimer = setTimeout(function () {
+    syncAll().catch(function () {});
+  }, 15000);
 }
 
 /** Two-way: download remote, merge, then upload. */
@@ -3018,7 +3008,16 @@ async function syncAll() {
     render();
   } catch (err) {
     state.sync.status = "err";
-    setSyncMessage(explainGitHubError(err, err.status), true);
+    const m = String((err && err.message) || err);
+    if (err && (err.status === 403 || /rate limit|abuse/i.test(m))) {
+      state.sync.rateLimitedUntil = Date.now() + 120000;
+      setSyncMessage(
+        "GitHub: слишком частый синк. Подождите 2 минуты, затем «Синхронизировать» вручную.",
+        true
+      );
+    } else {
+      setSyncMessage(explainGitHubError(err, err.status), true);
+    }
   } finally {
     syncingNow = false;
     renderSyncStatus();
@@ -4065,8 +4064,8 @@ loadAppConfig()
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.58 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.58");
+    if (el) el.textContent = "Сборка 2026.10.08.59 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.59");
   } catch (_) {}
 })();
 

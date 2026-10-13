@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.47";
+const APP_BUILD = "2026.10.08.48";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -1102,7 +1102,7 @@ function renderNotesView() {
 
   titleEl.textContent = folder ? folder.name : "Все заметки";
   subEl.textContent = folder
-    ? "Метки и заметки"
+    ? "Папки и заметки"
     : "Как в Google Keep — карточки, цвета, текст";
   if (crumbEl) {
     if (!folderId) crumbEl.innerHTML = "";
@@ -1146,7 +1146,7 @@ function renderNotesView() {
     if (!kids.length) strip.innerHTML = "";
     else {
       strip.innerHTML =
-        `<div class="folder-strip-label">Метки</div>
+        `<div class="folder-strip-label">Папки</div>
          <div class="keep-labels">
           ${kids
             .map(
@@ -1157,7 +1157,7 @@ function renderNotesView() {
             </button>`
             )
             .join("")}
-           <button type="button" class="keep-label keep-label-add" data-note-folder-add="${folderId || ""}">+ метка</button>
+           <button type="button" class="keep-label keep-label-add" data-note-folder-add="${folderId || ""}">+ папка</button>
          </div>`;
     }
   }
@@ -2869,7 +2869,9 @@ async function syncAll() {
   renderSyncStatus();
   try {
     await syncPull({ silent: true, skipStatus: true });
+    await hydrateAllVoices();
     await syncPush({ silent: true, skipStatus: true });
+    await hydrateAllVoices();
     state.sync.status = "ok";
     setSyncMessage("Синхронизировано. Данные одинаковы на всех устройствах.");
   } catch (err) {
@@ -3841,15 +3843,18 @@ loadAppConfig()
   .then(() => hydrateAllVoices())
   .then(() => {
     render();
-    if (String(state.filter).startsWith("notes:")) render();
+    if (isCloudReady()) {
+      syncAll().then(() => hydrateAllVoices()).then(() => render());
+      startCloudWatch();
+    }
   });
 
 // Mark app as alive for the user / debugging
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.47 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.47");
+    if (el) el.textContent = "Сборка 2026.10.08.48 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.48");
   } catch (_) {}
 })();
 

@@ -2572,3 +2572,17 @@ img {
   background: var(--accent);
   color: #fff;
 }
+
+
+.keep-labels {
+  padding-left: 2px;
+  padding-right: 8px;
+}
+
+.folder-strip {
+  padding-left: calc(var(--content-pad) + 4px) !important;
+}
+
+.keep-masonry {
+  padding-left: calc(var(--content-pad) + 4px) !important;
+}

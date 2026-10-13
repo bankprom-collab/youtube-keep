@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.59";
+const APP_BUILD = "2026.10.08.60";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -2531,15 +2531,32 @@ async function notesForSync() {
 
 async function syncPayload() {
   const notes = await notesForSync();
+  // flat list of every clip — easiest to union across devices
+  const voiceClips = [];
+  for (const n of notes) {
+    for (const v of n.voices || []) {
+      if (!v || !v.data) continue;
+      voiceClips.push({
+        id: v.id || v.ref || uid(),
+        noteTitle: n.title || "",
+        noteId: n.id,
+        name: v.name || "",
+        at: v.at || "",
+        mime: v.mime || "audio/webm",
+        data: v.data,
+      });
+    }
+  }
   return JSON.stringify(
     {
-      version: 2,
+      version: 3,
       updatedAt: nowIso(),
       links: state.links,
       categories: state.categories,
       deletedCategoryIds: state.deletedCategoryIds || [],
       noteFolders: state.noteFolders || [],
       notes: notes,
+      voiceClips: voiceClips,
       deletedNoteFolderIds: state.deletedNoteFolderIds || [],
       deletedNoteIds: state.deletedNoteIds || [],
     },
@@ -2924,6 +2941,57 @@ async function syncPull(opts = {}) {
         }
 
         state.notes = [...byKey.values()];
+
+        // Re-attach clips from flat voiceClips[] (union)
+        const clipMap = new Map();
+        const addClip = (v) => {
+          if (!v || !v.data) return;
+          const key = v.id || String(v.data).slice(0, 80);
+          const prev = clipMap.get(key);
+          if (!prev || String(v.data || "").length > String(prev.data || "").length) {
+            clipMap.set(key, v);
+          }
+        };
+        for (const n of state.notes || []) {
+          for (const v of collectVoices(n)) addClip(v);
+        }
+        for (const v of data.voiceClips || []) addClip(v);
+        for (const n of data.notes || []) {
+          for (const v of collectVoices(n)) addClip(v);
+        }
+
+        // group clips by note title (and noteId)
+        const byTitle = new Map();
+        for (const v of clipMap.values()) {
+          const title = String(v.noteTitle || v.title || "").trim().toLowerCase();
+          const key = title || v.noteId || "";
+          if (!key) continue;
+          if (!byTitle.has(key)) byTitle.set(key, []);
+          byTitle.get(key).push(v);
+        }
+
+        for (const n of state.notes || []) {
+          const titleKey = String(n.title || "").trim().toLowerCase();
+          const list = byTitle.get(titleKey) || byTitle.get(n.id) || [];
+          // unique by id
+          const m = new Map();
+          for (const v of list) {
+            const k = v.id || String(v.data || "").slice(0, 40);
+            if (!m.has(k) || String(v.data || "").length > String(m.get(k).data || "").length) {
+              m.set(k, v);
+            }
+          }
+          n.voices = [...m.values()].map((v) => ({
+            id: v.id || uid(),
+            ref: v.id || v.ref,
+            name: v.name || "",
+            at: v.at || "",
+            mime: v.mime || "audio/webm",
+            data: v.data || "",
+          }));
+          delete n.voice;
+        }
+
         storeVoicesFromCloud(state.notes).then(function () {
           for (const n of state.notes || []) refreshVoiceCache(n.id);
         });
@@ -4064,8 +4132,8 @@ loadAppConfig()
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.59 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.59");
+    if (el) el.textContent = "Сборка 2026.10.08.60 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.60");
   } catch (_) {}
 })();
 

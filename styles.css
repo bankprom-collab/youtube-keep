@@ -2450,3 +2450,51 @@ img {
   display: flex;
   flex-direction: column;
 }
+
+
+.keep-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 2px 0;
+  min-width: 0;
+}
+
+.keep-card-body {
+  margin-top: 8px;
+}
+
+.keep-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(26, 22, 18, 0.08);
+}
+
+.keep-edit-btn {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 0.82rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.55);
+  font-weight: 650;
+}
+
+.keep-edit-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.keep-card.is-closed {
+  padding: 10px 12px;
+}
+
+.keep-card.is-closed .keep-card-foot {
+  margin-top: 6px;
+  padding-top: 6px;
+}

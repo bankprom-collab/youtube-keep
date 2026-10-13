@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.42";
+const APP_BUILD = "2026.10.08.43";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -1188,58 +1188,59 @@ function renderNotesView() {
           : "";
         const expanded = state.expandedNoteIds.has(n.id);
         const voiceCount = noteVoices(n).length;
-        const preview = String(n.text || "").replace(/\s+/g, " ").slice(0, 120);
+        const preview = String(n.text || "").replace(/\s+/g, " ").slice(0, 100);
         return `
         <article class="keep-card ${expanded ? "is-open" : "is-closed"}" style="background:${bg}" data-note-id="${n.id}">
-          <button type="button" class="keep-card-open" data-note-open="${n.id}">
-            <div class="keep-card-line">
-              <span class="keep-chevron ${expanded ? "is-open" : ""}">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>
-              </span>
-              <span class="keep-line-title">${escapeHtml(n.title || "Заметка")}</span>
-              ${voiceCount ? `<span class="keep-line-badge">${voiceCount} голос</span>` : ""}
-            </div>
-            ${
-              !expanded && preview
-                ? `<div class="keep-line-preview">${escapeHtml(preview)}${String(n.text || "").length > 120 ? "…" : ""}</div>`
-                : ""
-            }
-          </button>
+          <div class="keep-card-head" data-note-toggle="${n.id}">
+            <span class="keep-chevron ${expanded ? "is-open" : ""}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>
+            </span>
+            <span class="keep-line-title">${escapeHtml(n.title || "Заметка")}</span>
+            ${voiceCount ? `<span class="keep-line-badge">${voiceCount} г</span>` : ""}
+          </div>
           ${
-            expanded
-              ? `<div class="keep-card-text">${escapeHtml(n.text || "")}</div>
-                 <button type="button" class="secondary-btn keep-edit-btn" data-note-edit="${n.id}">Открыть / редактировать</button>`
+            !expanded && preview
+              ? `<div class="keep-line-preview" data-note-toggle="${n.id}">${escapeHtml(preview)}${
+                  String(n.text || "").length > 100 ? "…" : ""
+                }</div>`
               : ""
           }
           ${
-            expanded && noteVoices(n).length
-              ? `<div class="keep-card-voice">
-                   <div class="voice-player-label">Голосовые (${noteVoices(n).length})</div>
-                   ${noteVoices(n)
-                     .map(
-                       (v, i) => `
-                     <div class="voice-row-title">${escapeHtml(voiceLabel(v, i))}</div>
-                     <audio controls class="voice-audio voice-audio-mini" src="${v.data}"></audio>`
-                     )
-                     .join("")}
+            expanded
+              ? `<div class="keep-card-body">
+                   <div class="keep-card-text">${escapeHtml(n.text || "")}</div>
+                   ${
+                     noteVoices(n).length
+                       ? `<div class="keep-card-voice">
+                            <div class="voice-player-label">Голосовые (${noteVoices(n).length})</div>
+                            ${noteVoices(n)
+                              .map(
+                                (v, i) =>
+                                  `<div class="voice-row-title">${escapeHtml(voiceLabel(v, i))}</div>
+                                   <audio controls class="voice-audio voice-audio-mini" src="${v.data}"></audio>`
+                              )
+                              .join("")}
+                          </div>`
+                       : ""
+                   }
+                   ${
+                     labelName
+                       ? `<div class="keep-card-label">${escapeHtml(labelName)}</div>`
+                       : ""
+                   }
                  </div>`
               : ""
           }
-          ${
-            labelName
-              ? `<div class="keep-card-label">${escapeHtml(labelName)}</div>`
-              : ""
-          }
-          <div class="keep-card-tools">
-            <button type="button" class="keep-tool" data-note-edit="${n.id}" title="Открыть заметку" aria-label="Открыть заметку">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-            </button>
-            <button type="button" class="keep-tool" data-note-pin="${n.id}" title="Закрепить" aria-label="Закрепить">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="${n.pinned ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.8"><path d="M12 3l2.2 6.4H21l-5.3 3.9 2 6.4L12 16.8 6.3 19.7l2-6.4L3 9.4h6.8L12 3z"/></svg>
-            </button>
-            <button type="button" class="keep-tool" data-note-del="${n.id}" title="Удалить" aria-label="Удалить">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
-            </button>
+          <div class="keep-card-foot">
+            <button type="button" class="keep-edit-btn" data-note-edit="${n.id}">Открыть / редактировать</button>
+            <div class="keep-card-tools">
+              <button type="button" class="keep-tool" data-note-pin="${n.id}" title="Закрепить" aria-label="Закрепить">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="${n.pinned ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.8"><path d="M12 3l2.2 6.4H21l-5.3 3.9 2 6.4L12 16.8 6.3 19.7l2-6.4L3 9.4h6.8L12 3z"/></svg>
+              </button>
+              <button type="button" class="keep-tool" data-note-del="${n.id}" title="Удалить" aria-label="Удалить">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+              </button>
+            </div>
           </div>
         </article>`;
       })
@@ -3431,7 +3432,16 @@ function bindEvents() {
   document.getElementById("grid")?.addEventListener("click", (e) => {
     const vplay = e.target.closest("[data-note-voice-play]");
     const vdel = e.target.closest("[data-note-voice-del]");
+    const toggleN = e.target.closest("[data-note-toggle]");
     const editNote = e.target.closest("[data-note-edit]");
+    if (toggleN && !editNote) {
+      e.preventDefault();
+      const nid = toggleN.getAttribute("data-note-toggle");
+      if (state.expandedNoteIds.has(nid)) state.expandedNoteIds.delete(nid);
+      else state.expandedNoteIds.add(nid);
+      render();
+      return;
+    }
     const open = e.target.closest("[data-note-open]");
     const del = e.target.closest("[data-note-del]");
     const pin = e.target.closest("[data-note-pin]");
@@ -3441,6 +3451,7 @@ function bindEvents() {
       openNoteStoreModal(editNote.getAttribute("data-note-edit"));
       return;
     }
+
     if (vplay) {
       e.preventDefault();
       e.stopPropagation();
@@ -3792,8 +3803,8 @@ loadAppConfig().then(() => applyHashCredentials());
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.42 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.42");
+    if (el) el.textContent = "Сборка 2026.10.08.43 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.43");
   } catch (_) {}
 })();
 

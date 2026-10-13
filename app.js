@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.44";
+const APP_BUILD = "2026.10.08.45";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -1236,7 +1236,7 @@ function renderNotesView() {
               : ""
           }
           <div class="keep-card-foot">
-            <button type="button" class="keep-edit-btn" data-note-edit="${n.id}">Открыть / редактировать</button>
+            <button type="button" class="keep-edit-btn" data-note-edit="${n.id}">Редактировать</button>
             <div class="keep-card-tools">
               <button type="button" class="keep-tool" data-note-pin="${n.id}" title="Закрепить" aria-label="Закрепить">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="${n.pinned ? "currentColor" : "none"}" stroke="currentColor" stroke-width="1.8"><path d="M12 3l2.2 6.4H21l-5.3 3.9 2 6.4L12 16.8 6.3 19.7l2-6.4L3 9.4h6.8L12 3z"/></svg>
@@ -3836,8 +3836,8 @@ loadAppConfig()
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.44 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.44");
+    if (el) el.textContent = "Сборка 2026.10.08.45 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.45");
   } catch (_) {}
 })();
 

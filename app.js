@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.53";
+const APP_BUILD = "2026.10.08.54";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -2851,7 +2851,43 @@ async function syncPull(opts = {}) {
         for (const n of state.notes || []) addVoices(n.id, collectVoices(n));
         for (const n of data.notes || []) addVoices(n.id, collectVoices(n));
 
+        // Collapse duplicates by title+folder ("трава" on PC + phone -> one note)
+        const byKey = new Map();
         for (const n of nmap.values()) {
+          const key =
+            String(n.title || "").trim().toLowerCase() +
+            "::" +
+            (n.folderId || "");
+          const prev = byKey.get(key);
+          if (!prev) {
+            byKey.set(key, n);
+          } else {
+            const keep = (n.updatedAt || "") >= (prev.updatedAt || "") ? n : prev;
+            const other = keep === n ? prev : n;
+            byKey.set(key, {
+              ...keep,
+              text:
+                String(n.text || "").length >= String(prev.text || "").length
+                  ? n.text
+                  : prev.text,
+              pinned: !!(n.pinned || prev.pinned),
+              createdAt:
+                String(n.createdAt || "") < String(prev.createdAt || "") &&
+                n.createdAt
+                  ? n.createdAt
+                  : prev.createdAt || n.createdAt,
+            });
+            // move voices from discarded id to keeper
+            const a = voiceByNote.get(n.id) || new Map();
+            const b = voiceByNote.get(prev.id) || new Map();
+            for (const [k, v] of b) {
+              if (!a.has(k)) a.set(k, v);
+            }
+            voiceByNote.set(byKey.get(key).id, a);
+          }
+        }
+
+        for (const n of byKey.values()) {
           const vm = voiceByNote.get(n.id) || new Map();
           n.voices = [...vm.values()].map((v) => ({
             id: v.id || v.ref || uid(),
@@ -2864,7 +2900,7 @@ async function syncPull(opts = {}) {
           delete n.voice;
         }
 
-        state.notes = [...nmap.values()];
+        state.notes = [...byKey.values()];
         storeVoicesFromCloud(state.notes).then(function () {
           for (const n of state.notes || []) refreshVoiceCache(n.id);
         });
@@ -3923,8 +3959,8 @@ loadAppConfig()
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.53 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.53");
+    if (el) el.textContent = "Сборка 2026.10.08.54 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.54");
   } catch (_) {}
 })();
 

@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.54";
+const APP_BUILD = "2026.10.08.55";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -2447,8 +2447,8 @@ function explainGitHubError(err, status) {
   if (status === 404) {
     return "Облако не найдено. Нажмите «Подключить» ещё раз — я создам его заново.";
   }
-  if (status === 403 || /rate limit/i.test(msg)) {
-    return "GitHub временно ограничил запросы. Подождите минуту и повторите.";
+  if (status === 403 || /rate limit|abuse|secondary rate/i.test(msg)) {
+    return "GitHub ограничил частые запросы. Подождите 1–2 минуты и нажмите «Синхронизировать».";
   }
   if (/failed to fetch|networkerror|load failed/i.test(msg)) {
     return "Нет связи с GitHub. Проверьте интернет на Mac и повторите.";
@@ -2999,13 +2999,15 @@ function startCloudWatch() {
     if (document.visibilityState === "visible") {
       syncAll().catch(() => {});
     }
-  }, 45000);
+  }, 180000);
   if (!startCloudWatch._bound) {
     startCloudWatch._bound = true;
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible" && isCloudReady()) {
-        syncAll().catch(() => {});
-      }
+      if (document.visibilityState !== "visible" || !isCloudReady()) return;
+      const now = Date.now();
+      if (now - (startCloudWatch._last || 0) < 60000) return;
+      startCloudWatch._last = now;
+      syncAll().catch(() => {});
     });
   }
 }
@@ -3959,8 +3961,8 @@ loadAppConfig()
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.54 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.54");
+    if (el) el.textContent = "Сборка 2026.10.08.55 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.55");
   } catch (_) {}
 })();
 

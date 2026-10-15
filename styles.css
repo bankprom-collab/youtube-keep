@@ -2629,3 +2629,34 @@ img {
 [data-drop-none] {
   border-style: dashed !important;
 }
+
+
+.file-row {
+  padding: 10px 0;
+  border-top: 1px solid rgba(26, 22, 18, 0.08);
+}
+
+.file-row-title {
+  font-weight: 700;
+  font-size: 0.85rem;
+  margin-bottom: 6px;
+}
+
+.file-img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+
+.file-video {
+  width: 100%;
+  max-height: 220px;
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+
+.file-row-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}

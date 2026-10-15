@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.65";
+const APP_BUILD = "2026.10.08.66";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -44,6 +44,7 @@ const state = {
   notes: [],
   deletedNoteFolderIds: [],
   deletedNoteIds: [],
+  deletedVoiceIds: [],
   editingNoteId: null,
   editingNoteFolderId: null,
   editingNoteFolderParentId: null,
@@ -207,6 +208,7 @@ function loadState() {
       ? data.deletedNoteFolderIds
       : [];
     state.deletedNoteIds = Array.isArray(data.deletedNoteIds) ? data.deletedNoteIds : [];
+    state.deletedVoiceIds = Array.isArray(data.deletedVoiceIds) ? data.deletedVoiceIds : [];
     // purge deleted notes/folders
     const deadF = new Set(state.deletedNoteFolderIds);
     const deadN = new Set(state.deletedNoteIds);
@@ -1497,19 +1499,25 @@ async function renderVoicePlayer(noteId) {
   box.querySelectorAll("[data-voice-idx]").forEach(function (btn) {
     btn.addEventListener("click", function () {
       const idx = parseInt(btn.getAttribute("data-voice-idx"), 10);
-      confirmAction("Удалить запись " + (idx + 1) + "?", "Аудио будет стёрто.", function () {
+      confirmAction("Удалить запись " + (idx + 1) + " на всех устройствах?", "Аудио сотрётся везде.", function () {
         const n2 = (state.notes || []).find(function (x) {
           return x.id === noteId;
         });
         if (!n2) return;
         const arr = noteVoices(n2);
+        const removed = arr[idx];
+        if (removed && (removed.id || removed.ref)) {
+          const vid = removed.id || removed.ref;
+          if (!state.deletedVoiceIds.includes(vid)) state.deletedVoiceIds.push(vid);
+        }
         arr.splice(idx, 1);
         n2.voices = arr;
         n2.updatedAt = nowIso();
         saveState();
         render();
         renderVoicePlayer(noteId);
-        toast("Запись удалена");
+        toast("Запись удалена везде");
+        if (isCloudReady()) scheduleAutoSync();
       });
     });
   });
@@ -1792,6 +1800,118 @@ function updateVoiceUI(recording) {
   }
 }
 
+function fileToDataUrl(file) {
+  return new Promise(function (resolve) {
+    const fr = new FileReader();
+    fr.onload = function () {
+      resolve(fr.result);
+    };
+    fr.readAsDataURL(file);
+  });
+}
+
+async function attachFilesToNote(noteId, fileList) {
+  const n = ensureNoteForVoice(noteId);
+  if (!n.files) n.files = [];
+  for (const f of fileList) {
+    if (!f) continue;
+    if (f.size > 8 * 1024 * 1024) {
+      toast("Файл слишком большой: " + f.name);
+      continue;
+    }
+    const data = await fileToDataUrl(f);
+    n.files.push({
+      id: uid(),
+      name: f.name,
+      type: f.type || "",
+      size: f.size,
+      data: data,
+      at: nowIso(),
+    });
+  }
+  n.updatedAt = nowIso();
+  saveState();
+  render();
+  renderVoicePlayer(noteId);
+  renderFilesPlayer(noteId);
+  toast("Файлы добавлены (" + (n.files || []).length + ")");
+  if (isCloudReady()) scheduleAutoSync();
+}
+
+function renderFilesPlayer(noteId) {
+  const box = document.getElementById("file-player");
+  const n = (state.notes || []).find(function (x) {
+    return x.id === noteId;
+  });
+  if (!box) return;
+  const files = (n && n.files) || [];
+  if (!files.length) {
+    box.hidden = true;
+    box.innerHTML = "";
+    return;
+  }
+  box.hidden = false;
+  box.innerHTML =
+    '<div class="voice-player-inner">' +
+    '<div class="voice-player-label">Файлы (' + files.length + ")</div>" +
+    files
+      .map(function (f, i) {
+        const isImg = /^image\//.test(f.type || "");
+        const isVid = /^video\//.test(f.type || "");
+        const isAud = /^audio\//.test(f.type || "");
+        let preview = "";
+        if (isImg) {
+          preview = '<img class="file-img" src="' + f.data + '" alt="" />';
+        } else if (isVid) {
+          preview = '<video class="file-video" controls src="' + f.data + '"></video>';
+        } else if (isAud) {
+          preview = '<audio class="voice-audio" controls src="' + f.data + '"></audio>';
+        }
+        return (
+          '<div class="file-row">' +
+          '<div class="file-row-title">' +
+          (i + 1) +
+          ". " +
+          escapeHtml(f.name || "Файл") +
+          "</div>" +
+          preview +
+          '<div class="file-row-actions">' +
+          '<a class="secondary-btn" download="' +
+          escapeHtml(f.name || "file") +
+          '" href="' +
+          f.data +
+          '">Скачать</a>' +
+          '<button type="button" class="ghost-btn" data-file-del="' +
+          f.id +
+          '">Удалить</button>' +
+          "</div></div>"
+        );
+      })
+      .join("") +
+    "</div>";
+
+  box.querySelectorAll("[data-file-del]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      const fid = btn.getAttribute("data-file-del");
+      confirmAction("Удалить файл на всех устройствах?", "", function () {
+        const n2 = (state.notes || []).find(function (x) {
+          return x.id === noteId;
+        });
+        if (!n2) return;
+        n2.files = (n2.files || []).filter(function (x) {
+          return x.id !== fid;
+        });
+        n2.updatedAt = nowIso();
+        saveState();
+        render();
+        renderFilesPlayer(noteId);
+        toast("Файл удалён");
+        if (isCloudReady()) scheduleAutoSync();
+      });
+    });
+  });
+}
+
 function openNoteStoreModal(noteId = null, folderId = null) {
   state.editingNoteId = noteId;
   const note = noteId ? (state.notes || []).find((n) => n.id === noteId) : null;
@@ -1842,6 +1962,7 @@ function openNoteStoreModal(noteId = null, folderId = null) {
   if (vPlay) vPlay.hidden = !hasVoice;
   if (vDel) vDel.hidden = true;
   renderVoicePlayer(state.editingNoteId);
+  renderFilesPlayer(state.editingNoteId);
   updateVoiceUI(false);
 
   const picks = document.getElementById("note-store-colors");
@@ -2653,6 +2774,16 @@ async function notesForSync() {
       pinned: !!n.pinned,
       createdAt: n.createdAt || "",
       updatedAt: n.updatedAt || "",
+      files: (n.files || []).map(function (f) {
+        return {
+          id: f.id,
+          name: f.name,
+          type: f.type,
+          size: f.size,
+          data: f.data || '',
+          at: f.at || '',
+        };
+      }),
       voices: fullVoices.map(function (v) {
         return {
           id: v.id,
@@ -2698,6 +2829,7 @@ async function syncPayload() {
       voiceClips: voiceClips,
       deletedNoteFolderIds: state.deletedNoteFolderIds || [],
       deletedNoteIds: state.deletedNoteIds || [],
+      deletedVoiceIds: state.deletedVoiceIds || [],
     },
     null,
     2
@@ -3019,8 +3151,13 @@ async function syncPull(opts = {}) {
           ...(state.deletedNoteIds || []),
           ...(data.deletedNoteIds || []),
         ]);
+        const deadV = new Set([
+          ...(state.deletedVoiceIds || []),
+          ...(data.deletedVoiceIds || []),
+        ]);
         state.deletedNoteFolderIds = [...deadF];
         state.deletedNoteIds = [...deadN];
+        state.deletedVoiceIds = [...deadV];
 
         const fmap = new Map();
         const putFolder = (f) => {
@@ -3190,14 +3327,23 @@ async function syncPull(opts = {}) {
               m.set(k, v);
             }
           }
-          n.voices = [...m.values()].map((v) => ({
-            id: v.id || uid(),
-            ref: v.id || v.ref,
-            name: v.name || "",
-            at: v.at || "",
-            mime: v.mime || "audio/webm",
-            data: v.data || "",
-          }));
+          const fm = new Map();
+          for (const src of [prev, item, raw]) {
+            for (const f of (src && src.files) || []) {
+              if (f && f.id && f.data) fm.set(f.id, f);
+            }
+          }
+          if (fm.size) n.files = [...fm.values()];
+          n.voices = [...m.values()]
+            .filter((v) => v && !(v.id && state.deletedVoiceIds.includes(v.id)))
+            .map((v) => ({
+              id: v.id || uid(),
+              ref: v.id || v.ref,
+              name: v.name || "",
+              at: v.at || "",
+              mime: v.mime || "audio/webm",
+              data: v.data || "",
+            }));
           delete n.voice;
         }
 
@@ -4188,6 +4334,21 @@ function bindEvents() {
   document.getElementById("btn-connect-cloud").addEventListener("click", () => connectCloud());
   document.getElementById("btn-open-setup").addEventListener("click", openSyncModal);
   document.getElementById("btn-save-note")?.addEventListener("click", saveNoteFromModal);
+  document.getElementById("btn-add-files")?.addEventListener("click", () => {
+    const id = state.editingNoteId || uid();
+    state.editingNoteId = id;
+    ensureNoteForVoice(id);
+    const inp = document.getElementById("note-files-input");
+    if (inp) inp.click();
+  });
+  document.getElementById("note-files-input")?.addEventListener("change", (e) => {
+    const files = e.target.files;
+    if (!files || !files.length) return;
+    const id = state.editingNoteId || uid();
+    state.editingNoteId = id;
+    attachFilesToNote(id, [...files]);
+    e.target.value = "";
+  });
   document.getElementById("btn-voice-record")?.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -4255,7 +4416,7 @@ function bindEvents() {
         n.folderId = folderId;
         n.color = color;
         n.updatedAt = nowIso();
-        // voice already on n if recorded
+        // voice/files already on n
       }
       toast("Заметка сохранена");
     } else {
@@ -4409,8 +4570,8 @@ loadAppConfig()
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.65 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.65");
+    if (el) el.textContent = "Сборка 2026.10.08.66 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.66");
   } catch (_) {}
 })();
 

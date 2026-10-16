@@ -2660,3 +2660,48 @@ img {
   gap: 8px;
   margin-top: 6px;
 }
+
+
+.sync-live {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 var(--content-pad) 12px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--bg-elevated);
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.sync-live.is-ok {
+  border-color: #c5dcc9;
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.sync-live.is-busy {
+  border-color: #f0d9a8;
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.sync-live.is-err {
+  border-color: #f0c0c0;
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.sync-live-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.sync-live.is-busy .sync-live-dot {
+  animation: pulse 1s ease-in-out infinite;
+}

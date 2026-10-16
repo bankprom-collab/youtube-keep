@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.66";
+const APP_BUILD = "2026.10.08.67";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -487,6 +487,7 @@ function render() {
   renderGrid();
   fillCategorySelect();
   renderSyncStatus();
+  renderSyncBanner();
   const setup = document.getElementById("setup-banner");
   const sync = document.getElementById("sync-banner");
   const ready = isCloudReady() || !!(appConfig && appConfig.token && (state.sync.gistId || appConfig.gistId));
@@ -2673,6 +2674,34 @@ function runBookmarksImport() {
 
 /* ---------- cloud sync (GitHub Gist) ---------- */
 
+function renderSyncBanner() {
+  const el = document.getElementById("sync-live");
+  if (!el) return;
+  const st = state.sync.status;
+  const ready = isCloudReady();
+  let cls = "sync-live";
+  let text = "Облако не подключено";
+  if (st === "busy") {
+    cls += " is-busy";
+    text = "Синхронизация идёт…";
+  } else if (st === "ok") {
+    cls += " is-ok";
+    text =
+      "Синхронизация выполнена удачно" +
+      (state.sync.lastSync
+        ? " · " + new Date(state.sync.lastSync).toLocaleTimeString("ru-RU")
+        : "");
+  } else if (st === "err") {
+    cls += " is-err";
+    text = "Синхронизация не удалась";
+  } else if (ready) {
+    cls += " is-ok";
+    text = "Облако подключено — нажмите «Синхронизировать»";
+  }
+  el.className = cls;
+  el.innerHTML = "<span class='sync-live-dot'></span><span>" + text + "</span>";
+}
+
 function renderSyncStatus() {
   const dot = document.getElementById("sync-dot");
   const label = document.getElementById("sync-label");
@@ -3018,6 +3047,16 @@ async function syncPush(opts = {}) {
     saveSyncSettings();
     setSyncMessage(`Готово. Облако подключено (Gist ID: ${data.id}). Теперь откройте телефон.`);
     toast("Подключено. Код сохранён — больше не нужно вводить.");
+    fillDeviceLink();
+    setTimeout(function () {
+      const link = deviceLink();
+      if (link) {
+        try {
+          navigator.clipboard && navigator.clipboard.writeText(link);
+          toast("Ссылка для других устройств скопирована");
+        } catch (_) {}
+      }
+    }, 400);
     render();
     startCloudWatch();
     syncAll().catch(() => {});
@@ -4570,8 +4609,8 @@ loadAppConfig()
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.66 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.66");
+    if (el) el.textContent = "Сборка 2026.10.08.67 — работает";
+    document.documentElement.setAttribute("data-ytk", "2026.10.08.67");
   } catch (_) {}
 })();
 

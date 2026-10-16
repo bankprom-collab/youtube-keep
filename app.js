@@ -850,12 +850,7 @@ function renderCategories() {
         return `
         <div class="dir-row ${active ? "is-active" : ""}">
           <button class="dir-btn" data-category-id="${cat.id}" type="button" title="${escapeHtml(cat.name)}">
-            <span class="dir-gear" aria-hidden="true">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M12 2.5l1.1 2.2 2.4-.4 1.1 2.2 2.2 1.1-.4 2.4 2.2 1.1-2.2 1.1.4 2.4-2.2 1.1-1.1 2.2-2.4-.4L12 21.5l-1.1-2.2-2.4.4-1.1-2.2-2.2-1.1.4-2.4L3.4 12l2.2-1.1-.4-2.4 2.2-1.1 1.1-2.2 2.4.4L12 2.5z"/>
-              </svg>
-            </span>
+            <span class="dir-gear" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="10" width="18" height="10" rx="2"/><path d="M3 12h18"/><rect x="3" y="7" width="18" height="5" rx="1.5"/><path d="M12 12v8"/></svg></span>
             <span class="dir-name">${escapeHtml(cat.name)}</span>
             <span class="dir-counts">
               ${subCount ? `<span class="dir-badge" title="Подпапки">${subCount}</span>` : ""}
@@ -1025,11 +1020,7 @@ function renderNotesSidebar() {
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>
       </button>
       <button class="dir-btn notes-head-label" data-note-folder="" type="button">
-        <span class="dir-gear" aria-hidden="true">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M5 4h11l3 3v13H5V4z"/><path d="M8 10h8M8 14h6"/>
-          </svg>
-        </span>
+        <span class="dir-gear" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="10" width="18" height="10" rx="2"/><path d="M3 12h18"/><rect x="3" y="7" width="18" height="5" rx="1.5"/><path d="M12 12v8"/></svg></span>
         <span class="dir-name">Все заметки</span>
         <span class="dir-counts"><span class="dir-num">${(state.notes || []).length}</span></span>
       </button>
@@ -1054,11 +1045,7 @@ function renderNotesSidebar() {
       <div class="dir-row ${active ? "is-active" : ""}" style="padding-left:${depth * 14}px">
         ${chevron}
         <button class="dir-btn" data-note-folder="${f.id}" type="button">
-          <span class="dir-gear" aria-hidden="true">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M5 4h11l3 3v13H5V4z"/><path d="M8 10h8M8 14h6"/>
-            </svg>
-          </span>
+          <span class="dir-gear" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="10" width="18" height="10" rx="2"/><path d="M3 12h18"/><rect x="3" y="7" width="18" height="5" rx="1.5"/><path d="M12 12v8"/></svg></span>
           <span class="dir-name">${escapeHtml(f.name)}</span>
           <span class="dir-counts">
             <span class="dir-num">${countNotesInFolder(f.id)}</span>

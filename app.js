@@ -1,6 +1,6 @@
 /* YouTube Keep — app logic */
 
-const APP_BUILD = "2026.10.08.67";
+const APP_BUILD = "2026.11.11.71";
 const STORAGE_KEY = "youtube-keep:v2";
 const SYNC_KEY = "youtube-keep:sync";
 
@@ -2698,7 +2698,9 @@ function renderSyncBanner() {
         : "");
   } else if (st === "err") {
     cls += " is-err";
-    text = "Синхронизация не удалась";
+    text = state.sync.permissionDenied
+      ? "Нет права записи в облако — нужен новый токен"
+      : "Синхронизация не удалась";
   } else if (ready) {
     cls += " is-ok";
     text = "Облако подключено — нажмите «Синхронизировать»";
@@ -2723,7 +2725,7 @@ function renderSyncStatus() {
     label.textContent = "Синхронизация…";
   } else if (state.sync.status === "err") {
     dot.classList.add("is-err");
-    label.textContent = "Ошибка синка";
+    label.textContent = state.sync.permissionDenied ? "Нет прав на запись" : "Ошибка синка";
   } else if (state.sync.token && state.sync.gistId) {
     label.textContent = "Облако подключено";
   } else {
@@ -2738,6 +2740,23 @@ function setSyncMessage(text, isError = false) {
   el.className = isError ? "hint is-err" : text.includes("успешно") || text.includes("Готово") || text.includes("подключено") ? "hint is-ok" : "hint";
 }
 
+function isRateLimitError(err, status) {
+  if (status === 429) return true;
+  const msg = String(err?.message || err || "");
+  return /rate limit|secondary rate|abuse detection|too many requests|slow down/i.test(msg);
+}
+
+function isGistWritePermissionError(err, status) {
+  if (status !== 403) return false;
+  if (isRateLimitError(err, status)) return false;
+  const msg = String(err?.message || err || "");
+  return /resource not accessible|not accessible by personal access token|permission|forbidden|read-only|readonly/i.test(msg);
+}
+
+function newWriteTokenHint() {
+  return "У токена нет права записи в Gists. Откройте github.com/settings/tokens, создайте новый токен с галочкой gist и вставьте его в настройках синхронизации.";
+}
+
 function explainGitHubError(err, status) {
   const msg = String(err?.message || err || "");
   if (status === 401 || /bad credentials|unauthorized/i.test(msg)) {
@@ -2746,7 +2765,10 @@ function explainGitHubError(err, status) {
   if (status === 404) {
     return "Облако не найдено. Нажмите «Подключить» ещё раз — я создам его заново.";
   }
-  if (status === 403 || /rate limit|abuse|secondary rate/i.test(msg)) {
+  if (isGistWritePermissionError(err, status)) {
+    return newWriteTokenHint();
+  }
+  if (isRateLimitError(err, status) || /rate limit|abuse|secondary rate/i.test(msg)) {
     return "GitHub ограничил частые запросы. Подождите 1–2 минуты и нажмите «Синхронизировать».";
   }
   if (/failed to fetch|networkerror|load failed/i.test(msg)) {
@@ -3047,6 +3069,7 @@ async function syncPush(opts = {}) {
     const data = await res.json();
     state.sync.gistId = data.id;
     state.sync.lastSync = nowIso();
+    state.sync.permissionDenied = false;
     state.sync.status = "ok";
     state.sync.message = "Успешно отправлено в облако";
     saveSyncSettings();
@@ -3222,9 +3245,23 @@ async function syncPull(opts = {}) {
         for (const f of data.noteFolders || []) putFolder(f);
         state.noteFolders = [...fmap.values()];
 
+        const filesByNote = new Map();
+        const addFiles = (noteId, list) => {
+          if (!noteId) return;
+          const map = filesByNote.get(noteId) || new Map();
+          for (const f of list || []) {
+            if (!f || !f.id || !f.data) continue;
+            const prevFile = map.get(f.id);
+            if (!prevFile || String(f.data).length > String(prevFile.data || "").length) {
+              map.set(f.id, f);
+            }
+          }
+          filesByNote.set(noteId, map);
+        };
         const nmap = new Map();
         const putNote = (raw) => {
           if (!raw || !raw.id || deadN.has(raw.id)) return;
+          if (Array.isArray(raw.files)) addFiles(raw.id, raw.files);
           const prev = nmap.get(raw.id);
           const item = {
             id: raw.id,
@@ -3307,13 +3344,19 @@ async function syncPull(opts = {}) {
                   ? n.createdAt
                   : prev.createdAt || n.createdAt,
             });
-            // move voices from discarded id to keeper
+            // move voices and files from discarded id to keeper
             const a = voiceByNote.get(n.id) || new Map();
             const b = voiceByNote.get(prev.id) || new Map();
             for (const [k, v] of b) {
               if (!a.has(k)) a.set(k, v);
             }
             voiceByNote.set(byKey.get(key).id, a);
+            const fa = filesByNote.get(n.id) || new Map();
+            const fb = filesByNote.get(prev.id) || new Map();
+            for (const [k, v] of fb) {
+              if (!fa.has(k)) fa.set(k, v);
+            }
+            filesByNote.set(byKey.get(key).id, fa);
           }
         }
 
@@ -3371,13 +3414,8 @@ async function syncPull(opts = {}) {
               m.set(k, v);
             }
           }
-          const fm = new Map();
-          for (const src of [prev, item, raw]) {
-            for (const f of (src && src.files) || []) {
-              if (f && f.id && f.data) fm.set(f.id, f);
-            }
-          }
-          if (fm.size) n.files = [...fm.values()];
+          const fileMap = filesByNote.get(n.id);
+          if (fileMap && fileMap.size) n.files = [...fileMap.values()];
           n.voices = [...m.values()]
             .filter((v) => v && !(v.id && state.deletedVoiceIds.includes(v.id)))
             .map((v) => ({
@@ -3438,6 +3476,7 @@ function isCloudReady() {
 
 function scheduleAutoSync() {
   if (!isCloudReady() || !state.sync.auto) return;
+  if (state.sync.permissionDenied) return;
   if (state.sync.rateLimitedUntil && Date.now() < state.sync.rateLimitedUntil) return;
   clearTimeout(autoSyncTimer);
   autoSyncTimer = setTimeout(function () {
@@ -3454,6 +3493,7 @@ async function syncAll() {
   if (syncingNow) return;
   syncingNow = true;
   state.sync.status = "busy";
+  state.sync.permissionDenied = false;
   renderSyncStatus();
   try {
     // 1) always pull first so we do not overwrite other device
@@ -3474,6 +3514,7 @@ async function syncAll() {
     }, 0);
     const lCount = (state.links || []).length;
     state.sync.status = "ok";
+    state.sync.permissionDenied = false;
     state.sync.lastSync = nowIso();
     saveSyncSettings();
     setSyncMessage(
@@ -3488,8 +3529,10 @@ async function syncAll() {
     render();
   } catch (err) {
     state.sync.status = "err";
-    const m = String((err && err.message) || err);
-    if (err && (err.status === 403 || /rate limit|abuse/i.test(m))) {
+    if (isGistWritePermissionError(err, err.status)) {
+      state.sync.permissionDenied = true;
+      setSyncMessage(newWriteTokenHint(), true);
+    } else if (isRateLimitError(err, err.status)) {
       state.sync.rateLimitedUntil = Date.now() + 120000;
       setSyncMessage(
         "GitHub: слишком частый синк. Подождите 2 минуты, затем «Синхронизировать» вручную.",
@@ -3639,11 +3682,21 @@ async function connectCloud() {
   state.sync.token = token;
   if (!state.sync.gistId) state.sync.gistId = appConfig.gistId;
   state.sync.auto = true;
+  state.sync.permissionDenied = false;
   saveSyncSettings();
   renderSyncStatus();
   fillDeviceLink();
   setSyncMessage("Проверяю связь с облаком…");
-  await syncPush();
+  try {
+    await syncPush();
+    state.sync.permissionDenied = false;
+  } catch (err) {
+    if (isGistWritePermissionError(err, err.status)) state.sync.permissionDenied = true;
+    setSyncMessage(explainGitHubError(err, err.status), true);
+    toast("Не получилось подключиться к облаку");
+  }
+  renderSyncBanner();
+  renderSyncStatus();
   fillDeviceLink();
 }
 
@@ -4614,8 +4667,8 @@ loadAppConfig()
 (function markAlive() {
   try {
     const el = document.getElementById("build-label");
-    if (el) el.textContent = "Сборка 2026.10.08.67 — работает";
-    document.documentElement.setAttribute("data-ytk", "2026.10.08.67");
+    if (el) el.textContent = `Сборка ${APP_BUILD}`;
+    document.documentElement.setAttribute("data-ytk", APP_BUILD);
   } catch (_) {}
 })();
 
